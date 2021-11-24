@@ -9,9 +9,17 @@ find_package(catkin COMPONENTS
     rosmath
 )
 
+include_directories(
+    ${catkin_INCLUDE_DIRS}
+)
+
+
+find_package(imagine REQUIRED)
+include_directories(${imagine_INCLUDE_DIRS})
+
 catkin_package(
     INCLUDE_DIRS 
-        include
+        # include
     CATKIN_DEPENDS 
         roscpp
         geometry_msgs
@@ -20,16 +28,8 @@ catkin_package(
         rosmath
     DEPENDS 
         imagine
-        imagine_cuda
-        imagine_optix
 )
 
-include_directories(
-    ${catkin_INCLUDE_DIRS}
-)
-
-find_package(imagine REQUIRED)
-include_directories(${imagine_INCLUDE_DIRS})
 
 include_directories(
     include
