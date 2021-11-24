@@ -1,7 +1,8 @@
 # imagine_ros
 
-ROS integration of imagine library. Simulate different sensors in meshes.
-Examples for:
+Robots simulate their sensors in triangle meshes.
+
+ROS integration of **imagine** library and examples for:
 - Basic usage of imagine library
 - Simulating different attributes for intersections
 - Advanced examples to speed up your applications 
