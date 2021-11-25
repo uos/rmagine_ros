@@ -6,7 +6,6 @@ find_package(catkin COMPONENTS
     geometry_msgs
     sensor_msgs
     tf2_ros
-    rosmath
 )
 
 include_directories(
@@ -25,7 +24,6 @@ catkin_package(
         geometry_msgs
         sensor_msgs
         tf2_ros
-        rosmath
     DEPENDS 
         imagine
 )

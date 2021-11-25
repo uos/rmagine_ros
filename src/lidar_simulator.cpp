@@ -10,15 +10,9 @@
 
 #include <sensor_msgs/PointCloud.h>
 
-#include <rosmath/sensor_msgs/math.h>
-#include <rosmath/sensor_msgs/conversions.h>
-#include <rosmath/sensor_msgs/misc.h>
-#include <rosmath/usingoperators.h>
-
 #include <tf2_ros/transform_broadcaster.h>
-
 #include <visualization_msgs/Marker.h>
-
+#include <imagine/util/StopWatch.hpp>
 
 using namespace imagine;
 
@@ -27,6 +21,9 @@ EmbreeSimulatorPtr sim;
 OptixSimulatorPtr sim_gpu;
 
 Memory<LiDARModel, RAM> model;
+
+// user inputs
+bool pose_received = false;
 
 ros::Publisher cloud_pub;
 sensor_msgs::PointCloud cloud;
@@ -43,7 +40,7 @@ Memory<LiDARModel, RAM> velodyne_model()
 {
     Memory<LiDARModel, RAM> model;
     model->theta.min = -M_PI;
-    model->theta.max = M_PI; 
+    model->theta.max = M_PI;
     model->theta.size = 440;
     model->theta.computeStep();
     
@@ -55,17 +52,6 @@ Memory<LiDARModel, RAM> velodyne_model()
     model->range.min = 0.5;
     model->range.max = 130.0;
     return model;
-}
-
-void updateTF(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
-{
-    // Update TF-tree
-    geometry_msgs::TransformStamped T;
-
-    T_base_map.header.frame_id = msg->header.frame_id;
-    T_base_map.child_frame_id = base_frame;
-    T_base_map.header.stamp = ros::Time::now();
-    T_base_map.transform <<= msg->pose.pose;
 }
 
 void fillPointCloud(const Memory<float, RAM>& ranges)
@@ -127,31 +113,67 @@ void fillCloudNormals(
 
 void poseCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {
-    updateTF(msg);
 
+    T_base_map.header.frame_id = msg->header.frame_id;
+    T_base_map.child_frame_id = base_frame;
+    T_base_map.header.stamp = ros::Time::now();
+    
+    T_base_map.transform.translation.x = msg->pose.pose.position.x;
+    T_base_map.transform.translation.y = msg->pose.pose.position.y;
+    T_base_map.transform.translation.z = msg->pose.pose.position.z;
+    T_base_map.transform.rotation = msg->pose.pose.orientation;
+
+    pose_received = true;
+}
+
+void simulate()
+{
     Memory<Transform, RAM> Tbm;
+    Tbm->R.x = T_base_map.transform.rotation.x;
+    Tbm->R.y = T_base_map.transform.rotation.y;
+    Tbm->R.z = T_base_map.transform.rotation.z;
+    Tbm->R.w = T_base_map.transform.rotation.w;
 
-    Tbm->R.x = msg->pose.pose.orientation.x;
-    Tbm->R.y = msg->pose.pose.orientation.y;
-    Tbm->R.z = msg->pose.pose.orientation.z;
-    Tbm->R.w = msg->pose.pose.orientation.w;
-
-    Tbm->t.x = msg->pose.pose.position.x;
-    Tbm->t.y = msg->pose.pose.position.y;
-    Tbm->t.z = msg->pose.pose.position.z;
+    Tbm->t.x = T_base_map.transform.translation.x;
+    Tbm->t.y = T_base_map.transform.translation.y;
+    Tbm->t.z = T_base_map.transform.translation.z;
 
     Memory<Transform, VRAM_CUDA> Tbm_gpu;
     Tbm_gpu = Tbm;
 
+    StopWatch sw;
+    double el;
+
     Memory<float, RAM> ranges;
-    ranges = sim_gpu->simulateRanges(Tbm_gpu);
+    Memory<float, VRAM_CUDA> ranges_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
+
+    sw();
+    sim_gpu->simulateRanges(Tbm_gpu, ranges_gpu);
+    el = sw();
+    std::cout << "Simulated cloud in " << el * 1000.0 << "ms" << std::endl;
+    
+    ranges = ranges_gpu;
     fillPointCloud(ranges);
 
     Memory<Vector, RAM> normals;
-    normals = sim_gpu->simulateNormals(Tbm_gpu);
-    fillCloudNormals(ranges, normals);
+    Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
+    sw();
+    sim_gpu->simulateNormals(Tbm_gpu, normals_gpu);
+    el = sw();
+    std::cout << "Simulated cloud normals in " << el * 1000.0 << "ms" << std::endl;
 
-    updateTF(msg);
+    normals = normals_gpu;
+    fillCloudNormals(ranges, normals);
+}
+
+void updateTF()
+{
+    // tf update
+    static tf2_ros::TransformBroadcaster br;
+    T_base_map.header.stamp = ros::Time::now();
+    br.sendTransform(T_base_map);
+    T_sensor_base.header.stamp = ros::Time::now();
+    br.sendTransform(T_sensor_base);
 }
 
 int main(int argc, char** argv)
@@ -164,10 +186,10 @@ int main(int argc, char** argv)
 
     ROS_INFO("lidar_simulator_node started.");
     
-    // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
+    std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/workspaces/imagine/dat/sphere.ply";
     // std::string mapfile = "/home/amock/workspaces/imagine/dat/two_cubes.dae";
-    std::string mapfile = "/home/amock/workspaces/imagine/dat/many_objects.dae";
+    // std::string mapfile = "/home/amock/workspaces/imagine/dat/many_objects.dae";
 
     EmbreeMapPtr map = importEmbreeMap(mapfile);
     sim = std::make_shared<EmbreeSimulator>(map);
@@ -224,15 +246,12 @@ int main(int argc, char** argv)
 
     while(ros::ok())
     {
-        // tf update
-        static tf2_ros::TransformBroadcaster br;
-        T_base_map.header.stamp = ros::Time::now();
-        br.sendTransform(T_base_map);
-        T_sensor_base.header.stamp = ros::Time::now();
-        br.sendTransform(T_sensor_base);
-
-        if(cloud.points.size() > 0)
+        if(pose_received)
         {
+            simulate();
+
+            updateTF();
+
             cloud.header.stamp = ros::Time::now();
             cloud_pub.publish(cloud);
 
@@ -245,8 +264,6 @@ int main(int argc, char** argv)
     }
 
     sim_gpu.reset();
-
-    std::cout << "Cleaned Up" << std::endl;
 
     return 0;
 }
