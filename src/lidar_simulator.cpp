@@ -113,7 +113,8 @@ void fillCloudNormals(
                 p_ros.y = p.y;
                 p_ros.z = p.z;
                 cloud_normals.points.push_back(p_ros);
-                Point p_shifted = p + normals[buff_id] * 0.2;
+                Vector normal = normals[buff_id];
+                Point p_shifted = p + normal * 0.2;
                 geometry_msgs::Point p_shifted_ros;
                 p_shifted_ros.x = p_shifted.x;
                 p_shifted_ros.y = p_shifted.y;
@@ -165,6 +166,7 @@ int main(int argc, char** argv)
     
     // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/workspaces/imagine/dat/sphere.ply";
+    // std::string mapfile = "/home/amock/workspaces/imagine/dat/two_cubes.dae";
     std::string mapfile = "/home/amock/workspaces/imagine/dat/many_objects.dae";
 
     EmbreeMapPtr map = importEmbreeMap(mapfile);
