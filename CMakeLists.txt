@@ -1,17 +1,21 @@
 cmake_minimum_required(VERSION 3.2)
 project(imagine_ros)
 
-find_package(catkin COMPONENTS
+find_package(catkin REQUIRED COMPONENTS
     roscpp
     geometry_msgs
     sensor_msgs
     tf2_ros
+    dynamic_reconfigure
+)
+
+generate_dynamic_reconfigure_options(
+  cfg/LidarModel.cfg
 )
 
 include_directories(
     ${catkin_INCLUDE_DIRS}
 )
-
 
 find_package(imagine REQUIRED)
 include_directories(${imagine_INCLUDE_DIRS})
@@ -38,6 +42,7 @@ add_executable(lidar_simulator src/lidar_simulator.cpp)
 add_dependencies(lidar_simulator 
     ${${PROJECT_NAME}_EXPORTED_TARGETS}
     ${catkin_EXPORTED_TARGETS}
+    ${PROJECT_NAME}_gencfg
 )
 
 ## Specify libraries to link a library or executable target against

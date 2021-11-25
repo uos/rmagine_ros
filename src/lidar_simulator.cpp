@@ -14,9 +14,14 @@
 #include <visualization_msgs/Marker.h>
 #include <imagine/util/StopWatch.hpp>
 
+
+#include <dynamic_reconfigure/server.h>
+#include <imagine_ros/LidarModelConfig.h>
+
+
 using namespace imagine;
 
-EmbreeSimulatorPtr sim;
+// EmbreeSimulatorPtr sim;
 
 OptixSimulatorPtr sim_gpu;
 
@@ -52,6 +57,26 @@ Memory<LiDARModel, RAM> velodyne_model()
     model->range.min = 0.5;
     model->range.max = 130.0;
     return model;
+}
+
+void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level) 
+{
+    ROS_INFO("Changing Model");
+
+    model->theta.min = config.theta_min;
+    model->theta.max = config.theta_max;
+    model->theta.size = config.theta_N;
+    model->theta.computeStep();
+
+    model->phi.min = config.phi_min;
+    model->phi.max = config.phi_max;
+    model->phi.size = config.phi_N;
+    model->phi.computeStep();
+
+    model->range.min = config.range_min;
+    model->range.max = config.range_max;
+
+    sim_gpu->setModel(model);
 }
 
 void fillPointCloud(const Memory<float, RAM>& ranges)
@@ -178,28 +203,25 @@ void updateTF()
 
 int main(int argc, char** argv)
 {
-    Memory<Transform, VRAM_CUDA> tmp(100);
-
     ros::init(argc, argv, "lidar_simulator");
     ros::NodeHandle nh;
     ros::NodeHandle nh_p("~");
 
     ROS_INFO("lidar_simulator_node started.");
     
-    std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
+    // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/workspaces/imagine/dat/sphere.ply";
     // std::string mapfile = "/home/amock/workspaces/imagine/dat/two_cubes.dae";
-    // std::string mapfile = "/home/amock/workspaces/imagine/dat/many_objects.dae";
+    std::string mapfile = "/home/amock/workspaces/imagine/dat/many_objects.dae";
 
-    EmbreeMapPtr map = importEmbreeMap(mapfile);
-    sim = std::make_shared<EmbreeSimulator>(map);
+    // EmbreeMapPtr map = importEmbreeMap(mapfile);
+    // sim = std::make_shared<EmbreeSimulator>(map);
 
     OptixMapPtr map_gpu = importOptixMap(mapfile);
     sim_gpu = std::make_shared<OptixSimulator>(map_gpu);
 
     // Define Sensor Model
     model = velodyne_model();
-    sim->setModel(model);
     sim_gpu->setModel(model);
 
     // Define Sensor to Base transform
@@ -208,7 +230,6 @@ int main(int argc, char** argv)
     // lift scanner up
     Tsb->t.z = 1.0;
 
-    sim->setTsb(Tsb);
     sim_gpu->setTsb(Tsb);
 
     // make point cloud publisher
@@ -225,6 +246,14 @@ int main(int argc, char** argv)
     cloud_normals.color.r = 1.0;
     cloud_normals.color.a = 1.0;
     marker_pub = nh_p.advertise<visualization_msgs::Marker>("cloud_normals", 1);
+
+
+    dynamic_reconfigure::Server<imagine_ros::LidarModelConfig> server;
+    dynamic_reconfigure::Server<imagine_ros::LidarModelConfig>::CallbackType f;
+
+    f = boost::bind(&modelCB, _1, _2);
+    server.setCallback(f);
+
 
     // Wait for pose to come in
     ros::Subscriber pose_sub = nh.subscribe<geometry_msgs::PoseWithCovarianceStamped>("initialpose", 1, poseCB);
