@@ -169,25 +169,39 @@ void simulate()
     StopWatch sw;
     double el;
 
+    using ResultT = Bundle<Ranges<VRAM_CUDA>, Normals<VRAM_CUDA> >;
+    ResultT res;
+    res.ranges.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
+    res.normals.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
+
+
     Memory<float, RAM> ranges;
-    Memory<float, VRAM_CUDA> ranges_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
+    Memory<Vector, RAM> normals;
 
     sw();
-    sim_gpu->simulateRanges(Tbm_gpu, ranges_gpu);
+    sim_gpu->simulate(Tbm_gpu, res);
     el = sw();
-    std::cout << "Simulated cloud in " << el * 1000.0 << "ms" << std::endl;
+    std::cout << "Simulated ranges and normals in " << el * 1000.0 << "ms" << std::endl;
+
     
-    ranges = ranges_gpu;
+    // Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
+    // sw();
+    // sim_gpu->simulateNormals(Tbm_gpu, normals_gpu);
+    // el = sw();
+    // std::cout << "Simulated cloud normals in " << el * 1000.0 << "ms" << std::endl;
+
+    // sw();
+    // sim_gpu->simulate(Tbm_gpu, ranges_gpu, normals_gpu);
+    // el = sw();
+    // std::cout << "Simulated " << ranges_gpu.size() << " ranges and normals in " << el * 1000.0 << "ms" << std::endl;
+
+    
+
+    ranges = res.ranges;
+    std::cout << ranges[0] << std::endl;
     fillPointCloud(ranges);
 
-    Memory<Vector, RAM> normals;
-    Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
-    sw();
-    sim_gpu->simulateNormals(Tbm_gpu, normals_gpu);
-    el = sw();
-    std::cout << "Simulated cloud normals in " << el * 1000.0 << "ms" << std::endl;
-
-    normals = normals_gpu;
+    normals = res.normals;
     fillCloudNormals(ranges, normals);
 }
 
@@ -292,6 +306,7 @@ int main(int argc, char** argv)
         r.sleep();
     }
 
+    // Segfault if not resetting it here
     sim_gpu.reset();
 
     return 0;
