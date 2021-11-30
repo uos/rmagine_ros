@@ -40,13 +40,13 @@ static const std_msgs::ColorRGBA make_color(float r, float g, float b)
 }
 
 std_msgs::ColorRGBA color_map[] = {
-    make_color(1.0, 1.0, 1.0), // white
     make_color(1.0, 0.0, 0.0), // red
     make_color(0.0, 1.0, 0.0), // green
     make_color(0.0, 0.0, 1.0), // blue
     make_color(1.0, 1.0, 0.0), // yellow
     make_color(0.0, 1.0, 1.0), // cyan
     make_color(1.0, 0.0, 1.0), // purple
+    make_color(1.0, 1.0, 1.0), // white
     make_color(0.0, 0.0, 0.0), // black
 };
 
@@ -262,10 +262,10 @@ int main(int argc, char** argv)
 
     ROS_INFO("lidar_simulator_node started.");
     
-    // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
+    std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
-    std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
+    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
 
     // EmbreeMapPtr map = importEmbreeMap(mapfile);
     // sim = std::make_shared<EmbreeSimulator>(map);
