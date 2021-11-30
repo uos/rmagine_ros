@@ -18,8 +18,38 @@
 #include <dynamic_reconfigure/server.h>
 #include <imagine_ros/LidarModelConfig.h>
 
+#include <std_msgs/ColorRGBA.h>
+
+#include <utility>
 
 using namespace imagine;
+
+static const std_msgs::ColorRGBA make_color(float r, float g, float b, float a)
+{
+    std_msgs::ColorRGBA ret;
+    ret.r = r;
+    ret.g = g;
+    ret.b = b;
+    ret.a = a;
+    return ret;
+}
+
+static const std_msgs::ColorRGBA make_color(float r, float g, float b)
+{
+    return make_color(r, g, b, 1.0);
+}
+
+std_msgs::ColorRGBA color_map[] = {
+    make_color(1.0, 1.0, 1.0), // white
+    make_color(1.0, 0.0, 0.0), // red
+    make_color(0.0, 1.0, 0.0), // green
+    make_color(0.0, 0.0, 1.0), // blue
+    make_color(1.0, 1.0, 0.0), // yellow
+    make_color(0.0, 1.0, 1.0), // cyan
+    make_color(1.0, 0.0, 1.0), // purple
+    make_color(0.0, 0.0, 0.0), // black
+};
+
 
 // EmbreeSimulatorPtr sim;
 
@@ -79,7 +109,9 @@ void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level)
     sim_gpu->setModel(model);
 }
 
-void fillPointCloud(const Memory<float, RAM>& ranges)
+void fillPointCloud(
+    const Memory<float, RAM>& ranges, 
+    const Memory<unsigned int, RAM>& object_ids)
 {
     cloud.points.resize(0);
     for(unsigned int vid = 0; vid < model->phi.size; vid++)
@@ -105,15 +137,18 @@ void fillPointCloud(const Memory<float, RAM>& ranges)
 
 void fillCloudNormals(
     const Memory<float, RAM>& ranges,
-    const Memory<Vector, RAM>& normals)
+    const Memory<Vector, RAM>& normals,
+    const Memory<unsigned int, RAM>& object_ids)
 {
     cloud_normals.points.resize(0);
+    cloud_normals.colors.resize(0);
     for(unsigned int vid = 0; vid < model->phi.size; vid++)
     {
         for(unsigned int hid = 0; hid < model->theta.size; hid++)
         {
             unsigned int buff_id = model->getBufferId(vid, hid);
             float range = ranges[buff_id];
+            
             
             if(model->range.inside(range))
             {
@@ -131,6 +166,10 @@ void fillCloudNormals(
                 p_shifted_ros.y = p_shifted.y;
                 p_shifted_ros.z = p_shifted.z;
                 cloud_normals.points.push_back(p_shifted_ros);
+
+                unsigned int object_id = object_ids[buff_id];
+                cloud_normals.colors.push_back(color_map[object_id]);
+                cloud_normals.colors.push_back(color_map[object_id]);
             }
         }
     }
@@ -169,14 +208,15 @@ void simulate()
     StopWatch sw;
     double el;
 
-    using ResultT = Bundle<Ranges<VRAM_CUDA>, Normals<VRAM_CUDA> >;
+    using ResultT = Bundle<Ranges<VRAM_CUDA>, Normals<VRAM_CUDA>, ObjectIds<VRAM_CUDA> >;
     ResultT res;
     res.ranges.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
     res.normals.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
-
+    res.object_ids.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
 
     Memory<float, RAM> ranges;
     Memory<Vector, RAM> normals;
+    Memory<unsigned int, RAM> object_ids;
 
     sw();
     sim_gpu->simulate(Tbm_gpu, res);
@@ -196,13 +236,12 @@ void simulate()
     // std::cout << "Simulated " << ranges_gpu.size() << " ranges and normals in " << el * 1000.0 << "ms" << std::endl;
 
     
-
     ranges = res.ranges;
-    std::cout << ranges[0] << std::endl;
-    fillPointCloud(ranges);
-
     normals = res.normals;
-    fillCloudNormals(ranges, normals);
+    object_ids = res.object_ids;
+
+    fillPointCloud(ranges, object_ids);
+    fillCloudNormals(ranges, normals, object_ids);
 }
 
 void updateTF()
