@@ -2,11 +2,13 @@
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
-#include <imagine/simulation/OptixSimulator.hpp>
-
-
-#include <imagine/simulation/EmbreeSimulator.hpp>
 #include <imagine/math/types.h>
+
+
+
+// Include Sphere Simulators
+#include <imagine/simulation/SphereSimulatorEmbree.hpp>
+#include <imagine/simulation/SphereSimulatorOptix.hpp>
 
 #include <sensor_msgs/PointCloud.h>
 
@@ -53,7 +55,7 @@ std_msgs::ColorRGBA color_map[] = {
 
 // EmbreeSimulatorPtr sim;
 
-OptixSimulatorPtr sim_gpu;
+SphereSimulatorOptixPtr sim_gpu;
 
 Memory<LiDARModel, RAM> model;
 
@@ -262,16 +264,20 @@ int main(int argc, char** argv)
 
     ROS_INFO("lidar_simulator_node started.");
     
-    std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
+
+    // hand crafted models
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
+    std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
+    // real models
+    // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
+    // std::string mapfile = "/home/amock/datasets/physics_building/physics.dae";
 
     // EmbreeMapPtr map = importEmbreeMap(mapfile);
     // sim = std::make_shared<EmbreeSimulator>(map);
 
     OptixMapPtr map_gpu = importOptixMap(mapfile);
-    sim_gpu = std::make_shared<OptixSimulator>(map_gpu);
+    sim_gpu = std::make_shared<SphereSimulatorOptix>(map_gpu);
 
     // Define Sensor Model
     model = velodyne_model();
