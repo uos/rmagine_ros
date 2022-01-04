@@ -91,22 +91,32 @@ Memory<LiDARModel, RAM> velodyne_model()
     return model;
 }
 
+bool first_call = true;
+
 void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level) 
 {
+    if(first_call)
+    {
+        first_call = false;
+        return;
+    }
+
     ROS_INFO("Changing Model");
 
-    model->theta.min = config.theta_min;
-    model->theta.max = config.theta_max;
-    model->theta.size = config.theta_N;
+    std::cout << level << std::endl;
+
+    model->theta.min = config.groups.lidar.theta.theta_min;
+    model->theta.max = config.groups.lidar.theta.theta_max;
+    model->theta.size = config.groups.lidar.theta.theta_N;
     model->theta.computeStep();
 
-    model->phi.min = config.phi_min;
-    model->phi.max = config.phi_max;
-    model->phi.size = config.phi_N;
+    model->phi.min = config.groups.lidar.phi.phi_min;
+    model->phi.max = config.groups.lidar.phi.phi_max;
+    model->phi.size = config.groups.lidar.phi.phi_N;
     model->phi.computeStep();
 
-    model->range.min = config.range_min;
-    model->range.max = config.range_max;
+    model->range.min = config.groups.lidar.range.range_min;
+    model->range.max = config.groups.lidar.range.range_max;
 
     sim_gpu->setModel(model);
 }
@@ -223,7 +233,7 @@ void simulate()
     sw();
     sim_gpu->simulate(Tbm_gpu, res);
     el = sw();
-    std::cout << "Simulated ranges and normals in " << el * 1000.0 << "ms" << std::endl;
+    std::cout << "Simulated " << ranges.size() << " ranges, normals and object ids in " << el * 1000.0 << "ms" << std::endl;
 
     
     // Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
