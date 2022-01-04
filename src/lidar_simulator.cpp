@@ -75,7 +75,7 @@ geometry_msgs::TransformStamped T_base_map;
 
 Memory<LiDARModel, RAM> velodyne_model()
 {
-    Memory<LiDARModel, RAM> model;
+    Memory<LiDARModel, RAM> model(1);
     model->theta.min = -M_PI;
     model->theta.max = M_PI;
     model->theta.size = 440;
@@ -194,7 +194,7 @@ void poseCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 
 void simulate()
 {
-    Memory<Transform, RAM> Tbm;
+    Memory<Transform, RAM> Tbm(1);
     Tbm->R.x = T_base_map.transform.rotation.x;
     Tbm->R.y = T_base_map.transform.rotation.y;
     Tbm->R.z = T_base_map.transform.rotation.z;
@@ -284,7 +284,7 @@ int main(int argc, char** argv)
     sim_gpu->setModel(model);
 
     // Define Sensor to Base transform
-    Memory<Transform, RAM> Tsb;
+    Memory<Transform, RAM> Tsb(1);
     Tsb->setIdentity();
     // lift scanner up
     Tsb->t.z = 1.0;
