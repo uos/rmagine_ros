@@ -4,11 +4,10 @@
 
 #include <imagine/math/types.h>
 
-
-
 // Include Sphere Simulators
-#include <imagine/simulation/SphereSimulatorEmbree.hpp>
-#include <imagine/simulation/SphereSimulatorOptix.hpp>
+
+#include <imagine/simulation/PinholeSimulatorEmbree.hpp>
+#include <imagine/simulation/PinholeSimulatorOptix.hpp>
 
 #include <sensor_msgs/PointCloud.h>
 
@@ -18,7 +17,7 @@
 
 
 #include <dynamic_reconfigure/server.h>
-#include <imagine_ros/LidarModelConfig.h>
+#include <imagine_ros/CameraModelConfig.h>
 
 #include <std_msgs/ColorRGBA.h>
 
@@ -52,11 +51,12 @@ std_msgs::ColorRGBA color_map[] = {
     make_color(0.0, 0.0, 0.0), // black
 };
 
+
 // EmbreeSimulatorPtr sim;
 
-SphereSimulatorOptixPtr sim_gpu;
+PinholeSimulatorOptixPtr sim_gpu;
 
-Memory<LiDARModel, RAM> model;
+Memory<PinholeModel, RAM> model;
 
 // user inputs
 bool pose_received = false;
@@ -72,27 +72,24 @@ std::string base_frame = "base_link";
 geometry_msgs::TransformStamped T_sensor_base;
 geometry_msgs::TransformStamped T_base_map;
 
-Memory<LiDARModel, RAM> velodyne_model()
+Memory<PinholeModel, RAM> camera_model()
 {
-    Memory<LiDARModel, RAM> model(1);
-    model->theta.min = -M_PI;
-    model->theta.max = M_PI;
-    model->theta.size = 440;
-    model->theta.computeStep();
+    Memory<PinholeModel, RAM> model(1);
+    model->width = 400;
+    model->height = 300;
+    model->c[0] = 200.0;
+    model->c[1] = 150.0;
+    model->f[0] = 1000.0;
+    model->f[1] = 1000.0;
+    model->range.min = 0.0;
+    model->range.max = 100.0;
     
-    model->phi.min = -0.261799;
-    model->phi.max = 0.261799;
-    model->phi.size = 16;
-    model->phi.computeStep();
-    
-    model->range.min = 0.5;
-    model->range.max = 130.0;
     return model;
 }
 
 bool first_call = true;
 
-void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level) 
+void modelCB(imagine_ros::CameraModelConfig &config, uint32_t level) 
 {
     if(first_call)
     {
@@ -102,21 +99,19 @@ void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level)
 
     ROS_INFO("Changing Model");
 
-    std::cout << level << std::endl;
+    // std::cout << level << std::endl;
 
-    model->theta.min = config.theta_min;
-    model->theta.max = config.theta_max;
-    model->theta.size = config.theta_N;
-    model->theta.computeStep();
+    model->width = config.width;
+    model->height = config.height;
 
-    model->phi.min = config.phi_min;
-    model->phi.max = config.phi_max;
-    model->phi.size = config.phi_N;
-    model->phi.computeStep();
+    model->c[0] = config.cx;
+    model->c[1] = config.cy;
+    model->f[0] = config.fx;
+    model->f[1] = config.fy;
 
     model->range.min = config.range_min;
     model->range.max = config.range_max;
-
+    
     sim_gpu->setModel(model);
 }
 
@@ -125,9 +120,9 @@ void fillPointCloud(
     const Memory<unsigned int, RAM>& object_ids)
 {
     cloud.points.resize(0);
-    for(unsigned int vid = 0; vid < model->phi.size; vid++)
+    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->theta.size; hid++)
+        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
         {
             unsigned int buff_id = model->getBufferId(vid, hid);
             float range = ranges[buff_id];
@@ -153,13 +148,12 @@ void fillCloudNormals(
 {
     cloud_normals.points.resize(0);
     cloud_normals.colors.resize(0);
-    for(unsigned int vid = 0; vid < model->phi.size; vid++)
+    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->theta.size; hid++)
+        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
         {
             unsigned int buff_id = model->getBufferId(vid, hid);
             float range = ranges[buff_id];
-            
             
             if(model->range.inside(range))
             {
@@ -188,7 +182,6 @@ void fillCloudNormals(
 
 void poseCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {
-
     T_base_map.header.frame_id = msg->header.frame_id;
     T_base_map.child_frame_id = base_frame;
     T_base_map.header.stamp = ros::Time::now();
@@ -221,9 +214,9 @@ void simulate()
 
     using ResultT = Bundle<Ranges<VRAM_CUDA>, Normals<VRAM_CUDA>, ObjectIds<VRAM_CUDA> >;
     ResultT res;
-    res.ranges.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
-    res.normals.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
-    res.object_ids.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
+    res.ranges.resize(Tbm_gpu.size() * model->size() );
+    res.normals.resize(Tbm_gpu.size() * model->size() );
+    res.object_ids.resize(Tbm_gpu.size() * model->size() );
 
     Memory<float, RAM> ranges;
     Memory<Vector, RAM> normals;
@@ -267,13 +260,12 @@ void updateTF()
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "lidar_simulator");
+    ros::init(argc, argv, "camera_simulator");
     ros::NodeHandle nh;
     ros::NodeHandle nh_p("~");
 
-    ROS_INFO("lidar_simulator_node started.");
+    ROS_INFO("camera_simulator_node started.");
     
-
     // hand crafted models
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
@@ -292,10 +284,10 @@ int main(int argc, char** argv)
     // sim = std::make_shared<EmbreeSimulator>(map);
 
     OptixMapPtr map_gpu = importOptixMap(meshfile);
-    sim_gpu = std::make_shared<SphereSimulatorOptix>(map_gpu);
+    sim_gpu = std::make_shared<PinholeSimulatorOptix>(map_gpu);
 
     // Define Sensor Model
-    model = velodyne_model();
+    model = camera_model();
     sim_gpu->setModel(model);
 
     // Define Sensor to Base transform
@@ -322,8 +314,8 @@ int main(int argc, char** argv)
     marker_pub = nh_p.advertise<visualization_msgs::Marker>("cloud_normals", 1);
 
 
-    dynamic_reconfigure::Server<imagine_ros::LidarModelConfig> server;
-    dynamic_reconfigure::Server<imagine_ros::LidarModelConfig>::CallbackType f;
+    dynamic_reconfigure::Server<imagine_ros::CameraModelConfig> server;
+    dynamic_reconfigure::Server<imagine_ros::CameraModelConfig>::CallbackType f;
 
     f = boost::bind(&modelCB, _1, _2);
     server.setCallback(f);
