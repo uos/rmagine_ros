@@ -12,7 +12,7 @@
     <param name="frame" type="string" value="map" />
 </node>
 
-<node pkg="imagine_ros" type="camera_simulator" name="camera_simulator" output="screen">
+<node pkg="imagine_ros" type="camera_simulator" name="imagine_simulator" output="screen">
     <param name="file" type="string" value="$(arg meshfile)" />
     <param name="frame" type="string" value="map" />
 </node>

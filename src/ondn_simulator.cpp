@@ -4,10 +4,10 @@
 
 #include <imagine/math/types.h>
 
-// Include Sphere Simulators
 
-#include <imagine/simulation/PinholeSimulatorEmbree.hpp>
-#include <imagine/simulation/PinholeSimulatorOptix.hpp>
+
+// Include Sphere Simulators
+#include <imagine/simulation/OnDnSimulatorOptix.hpp>
 
 #include <sensor_msgs/PointCloud.h>
 
@@ -15,9 +15,6 @@
 #include <visualization_msgs/Marker.h>
 #include <imagine/util/StopWatch.hpp>
 
-
-#include <dynamic_reconfigure/server.h>
-#include <imagine_ros/CameraModelConfig.h>
 
 #include <std_msgs/ColorRGBA.h>
 
@@ -51,24 +48,26 @@ std_msgs::ColorRGBA color_map[] = {
     make_color(0.0, 0.0, 0.0), // black
 };
 
-
 // EmbreeSimulatorPtr sim;
 
-PinholeSimulatorOptixPtr sim_gpu;
+OnDnSimulatorOptixPtr sim_gpu;
 
-Memory<PinholeModel, RAM> model;
+OnDnModel<RAM> model;
 
 // user inputs
 bool pose_received = false;
 
 ros::Publisher cloud_pub;
+// point cloud only
 sensor_msgs::PointCloud cloud;
 ros::Publisher marker_pub;
+// hit points, normals and object ids
 visualization_msgs::Marker cloud_normals;
 
 // ray viz
 ros::Publisher ray_pub;
 visualization_msgs::Marker ray_marker;
+
 
 std::string sensor_frame = "sensor_link";
 std::string base_frame = "base_link";
@@ -76,65 +75,58 @@ std::string base_frame = "base_link";
 geometry_msgs::TransformStamped T_sensor_base;
 geometry_msgs::TransformStamped T_base_map;
 
-Memory<PinholeModel, RAM> camera_model()
+OnDnModel<RAM> o1dn_model()
 {
-    Memory<PinholeModel, RAM> model(1);
-    model->width = 200;
-    model->height = 150;
-    model->c[0] = 100.0;
-    model->c[1] = 75.0;
-    model->f[0] = 100.0;
-    model->f[1] = 100.0;
-    model->range.min = 0.0;
-    model->range.max = 100.0;
-    
+    OnDnModel<RAM> model;
+
+    model.width = 200;
+    model.height = 1;
+
+    model.rays.resize(model.width * model.height);
+    model.orig.resize(model.width * model.height);
+
+    float step_size = 0.05;
+
+    for(int i=0; i<200; i++)
+    {
+        float percent = static_cast<float>(i) / static_cast<float>(200);
+        float step = - static_cast<float>(i - 100) * step_size;
+        float y = sin(step);
+        float x = cos(step);
+
+        model.orig[i].x = 0.0;
+        model.orig[i].y = y * percent;
+        model.orig[i].z = x * percent;
+
+        model.rays[i].x = 1.0;
+        model.rays[i].y = 0.0;
+        model.rays[i].z = 0.0;
+    }
+
+    model.range.min = 0.0;
+    model.range.max = 100.0;
+
     return model;
 }
 
-bool first_call = true;
-
-void modelCB(imagine_ros::CameraModelConfig &config, uint32_t level) 
-{
-    if(first_call)
-    {
-        first_call = false;
-        return;
-    }
-
-    ROS_INFO("Changing Model");
-
-    // std::cout << level << std::endl;
-
-    model->width = config.width;
-    model->height = config.height;
-
-    model->c[0] = config.cx;
-    model->c[1] = config.cy;
-    model->f[0] = config.fx;
-    model->f[1] = config.fy;
-
-    model->range.min = config.range_min;
-    model->range.max = config.range_max;
-
-    sim_gpu->setModel(model);
-}
 
 void fillPointCloud(
     const Memory<float, RAM>& ranges, 
     const Memory<unsigned int, RAM>& object_ids)
 {
     cloud.points.resize(0);
-    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
+    for(unsigned int vid = 0; vid < model.getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
+        for(unsigned int hid = 0; hid < model.getWidth(); hid++)
         {
-            unsigned int buff_id = model->getBufferId(vid, hid);
+            unsigned int buff_id = model.getBufferId(vid, hid);
             float range = ranges[buff_id];
             
-            if(model->range.inside(range))
+            if(model.range.inside(range))
             {
-                Vector ray = model->getRay(vid, hid);
-                Point p = ray * range;
+                Vector ray = model.getRay(vid, hid);
+                Point orig = model.getOrigin(vid, hid);
+                Point p = orig + ray * range;
                 geometry_msgs::Point32 p_ros;
                 p_ros.x = p.x;
                 p_ros.y = p.y;
@@ -152,17 +144,18 @@ void fillCloudNormals(
 {
     cloud_normals.points.resize(0);
     cloud_normals.colors.resize(0);
-    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
+    for(unsigned int vid = 0; vid < model.getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
+        for(unsigned int hid = 0; hid < model.getWidth(); hid++)
         {
-            unsigned int buff_id = model->getBufferId(vid, hid);
+            unsigned int buff_id = model.getBufferId(vid, hid);
             float range = ranges[buff_id];
             
-            if(model->range.inside(range))
+            if(model.range.inside(range))
             {
-                Vector ray = model->getRay(vid, hid);
-                Point p = ray * range;
+                Vector ray = model.getRay(vid, hid);
+                Point orig = model.getOrigin(vid, hid);
+                Point p = orig + ray * range;
                 geometry_msgs::Point p_ros;
                 p_ros.x = p.x;
                 p_ros.y = p.y;
@@ -184,22 +177,24 @@ void fillCloudNormals(
     }
 }
 
+
 void fillRayMarker(
     const Memory<float, RAM>& ranges)
 {
     ray_marker.points.resize(0);
     ray_marker.colors.resize(0);
-    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
+    for(unsigned int vid = 0; vid < model.getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
+        for(unsigned int hid = 0; hid < model.getWidth(); hid++)
         {
-            unsigned int buff_id = model->getBufferId(vid, hid);
+            unsigned int buff_id = model.getBufferId(vid, hid);
             float range = ranges[buff_id];
             
-            if(model->range.inside(range))
+            if(model.range.inside(range))
             {
-                Vector ray = model->getRay(vid, hid);
-                Point p_int = ray * range;
+                Vector ray = model.getRay(vid, hid);
+                Point orig = model.getOrigin(vid, hid);
+                Point p_int = orig + ray * range;
                 
                 geometry_msgs::Point p_int_ros;
                 geometry_msgs::Point p_orig_ros;
@@ -208,9 +203,9 @@ void fillRayMarker(
                 p_int_ros.y = p_int.y;
                 p_int_ros.z = p_int.z;
 
-                p_orig_ros.x = 0.0;
-                p_orig_ros.y = 0.0;
-                p_orig_ros.z = 0.0;
+                p_orig_ros.x = orig.x;
+                p_orig_ros.y = orig.y;
+                p_orig_ros.z = orig.z;
 
                 ray_marker.points.push_back(p_orig_ros);
                 ray_marker.points.push_back(p_int_ros);
@@ -219,8 +214,10 @@ void fillRayMarker(
     }
 }
 
+
 void poseCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {
+
     T_base_map.header.frame_id = msg->header.frame_id;
     T_base_map.child_frame_id = base_frame;
     T_base_map.header.stamp = ros::Time::now();
@@ -253,9 +250,9 @@ void simulate()
 
     using ResultT = Bundle<Ranges<VRAM_CUDA>, Normals<VRAM_CUDA>, ObjectIds<VRAM_CUDA> >;
     ResultT res;
-    res.ranges.resize(Tbm_gpu.size() * model->size() );
-    res.normals.resize(Tbm_gpu.size() * model->size() );
-    res.object_ids.resize(Tbm_gpu.size() * model->size() );
+    res.ranges.resize(Tbm_gpu.size() * model.size() );
+    res.normals.resize(Tbm_gpu.size() * model.size() );
+    res.object_ids.resize(Tbm_gpu.size() * model.size() );
 
     Memory<float, RAM> ranges;
     Memory<Vector, RAM> normals;
@@ -300,12 +297,12 @@ void updateTF()
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "camera_simulator");
+    ros::init(argc, argv, "ondn_simulator");
     ros::NodeHandle nh;
     ros::NodeHandle nh_p("~");
 
-    ROS_INFO("camera_simulator_node started.");
-    
+    ROS_INFO("ondn_simulator started.");
+
     // hand crafted models
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
     // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
@@ -324,10 +321,10 @@ int main(int argc, char** argv)
     // sim = std::make_shared<EmbreeSimulator>(map);
 
     OptixMapPtr map_gpu = importOptixMap(meshfile);
-    sim_gpu = std::make_shared<PinholeSimulatorOptix>(map_gpu);
+    sim_gpu = std::make_shared<OnDnSimulatorOptix>(map_gpu);
 
     // Define Sensor Model
-    model = camera_model();
+    model = o1dn_model();
     sim_gpu->setModel(model);
 
     // Define Sensor to Base transform
@@ -341,6 +338,7 @@ int main(int argc, char** argv)
     // make point cloud publisher
     cloud.header.frame_id = sensor_frame;
     cloud_pub = nh_p.advertise<sensor_msgs::PointCloud>("cloud", 1);
+    
 
     // make point normals publisher
     cloud_normals.header.frame_id = sensor_frame;
@@ -365,13 +363,11 @@ int main(int argc, char** argv)
 
     ray_pub = nh_p.advertise<visualization_msgs::Marker>("rays", 1);
 
+    // dynamic_reconfigure::Server<imagine_ros::LidarModelConfig> server;
+    // dynamic_reconfigure::Server<imagine_ros::LidarModelConfig>::CallbackType f;
 
-    dynamic_reconfigure::Server<imagine_ros::CameraModelConfig> server;
-    dynamic_reconfigure::Server<imagine_ros::CameraModelConfig>::CallbackType f;
-
-    f = boost::bind(&modelCB, _1, _2);
-    server.setCallback(f);
-
+    // f = boost::bind(&modelCB, _1, _2);
+    // server.setCallback(f);
 
     // Wait for pose to come in
     ros::Subscriber pose_sub = nh.subscribe<geometry_msgs::PoseWithCovarianceStamped>("initialpose", 1, poseCB);

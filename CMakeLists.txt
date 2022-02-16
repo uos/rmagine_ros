@@ -70,6 +70,37 @@ target_link_libraries(camera_simulator
 
 
 
+add_executable(o1dn_simulator src/o1dn_simulator.cpp)
+
+add_dependencies(o1dn_simulator 
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+    ${PROJECT_NAME}_gencfg
+)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(o1dn_simulator
+    ${catkin_LIBRARIES}
+    ${imagine_LIBRARIES}
+)
+
+
+
+add_executable(ondn_simulator src/ondn_simulator.cpp)
+
+add_dependencies(ondn_simulator 
+    ${${PROJECT_NAME}_EXPORTED_TARGETS}
+    ${catkin_EXPORTED_TARGETS}
+    ${PROJECT_NAME}_gencfg
+)
+
+## Specify libraries to link a library or executable target against
+target_link_libraries(ondn_simulator
+    ${catkin_LIBRARIES}
+    ${imagine_LIBRARIES}
+)
+
+
 add_executable(mesh_publisher src/mesh_publisher.cpp)
 
 add_dependencies(mesh_publisher 

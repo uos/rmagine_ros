@@ -66,6 +66,11 @@ sensor_msgs::PointCloud cloud;
 ros::Publisher marker_pub;
 visualization_msgs::Marker cloud_normals;
 
+// ray viz
+ros::Publisher ray_pub;
+visualization_msgs::Marker ray_marker;
+
+
 std::string sensor_frame = "sensor_link";
 std::string base_frame = "base_link";
 
@@ -125,9 +130,9 @@ void fillPointCloud(
     const Memory<unsigned int, RAM>& object_ids)
 {
     cloud.points.resize(0);
-    for(unsigned int vid = 0; vid < model->phi.size; vid++)
+    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->theta.size; hid++)
+        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
         {
             unsigned int buff_id = model->getBufferId(vid, hid);
             float range = ranges[buff_id];
@@ -153,13 +158,12 @@ void fillCloudNormals(
 {
     cloud_normals.points.resize(0);
     cloud_normals.colors.resize(0);
-    for(unsigned int vid = 0; vid < model->phi.size; vid++)
+    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->theta.size; hid++)
+        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
         {
             unsigned int buff_id = model->getBufferId(vid, hid);
             float range = ranges[buff_id];
-            
             
             if(model->range.inside(range))
             {
@@ -181,6 +185,42 @@ void fillCloudNormals(
                 unsigned int object_id = object_ids[buff_id];
                 cloud_normals.colors.push_back(color_map[object_id]);
                 cloud_normals.colors.push_back(color_map[object_id]);
+            }
+        }
+    }
+}
+
+
+void fillRayMarker(
+    const Memory<float, RAM>& ranges)
+{
+    ray_marker.points.resize(0);
+    ray_marker.colors.resize(0);
+    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
+    {
+        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
+        {
+            unsigned int buff_id = model->getBufferId(vid, hid);
+            float range = ranges[buff_id];
+            
+            if(model->range.inside(range))
+            {
+                Vector ray = model->getRay(vid, hid);
+                Point p_int = ray * range;
+                
+                geometry_msgs::Point p_int_ros;
+                geometry_msgs::Point p_orig_ros;
+
+                p_int_ros.x = p_int.x;
+                p_int_ros.y = p_int.y;
+                p_int_ros.z = p_int.z;
+
+                p_orig_ros.x = 0.0;
+                p_orig_ros.y = 0.0;
+                p_orig_ros.z = 0.0;
+
+                ray_marker.points.push_back(p_orig_ros);
+                ray_marker.points.push_back(p_int_ros);
             }
         }
     }
@@ -245,7 +285,6 @@ void simulate()
     // sim_gpu->simulate(Tbm_gpu, ranges_gpu, normals_gpu);
     // el = sw();
     // std::cout << "Simulated " << ranges_gpu.size() << " ranges and normals in " << el * 1000.0 << "ms" << std::endl;
-
     
     ranges = res.ranges;
     normals = res.normals;
@@ -253,6 +292,7 @@ void simulate()
 
     fillPointCloud(ranges, object_ids);
     fillCloudNormals(ranges, normals, object_ids);
+    fillRayMarker(ranges);
 }
 
 void updateTF()
@@ -321,6 +361,16 @@ int main(int argc, char** argv)
     cloud_normals.color.a = 1.0;
     marker_pub = nh_p.advertise<visualization_msgs::Marker>("cloud_normals", 1);
 
+    ray_marker.header.frame_id = sensor_frame;
+    ray_marker.type = visualization_msgs::Marker::LINE_LIST;
+    ray_marker.action = visualization_msgs::Marker::ADD;
+    ray_marker.pose.orientation.w = 1.0;
+    ray_marker.scale.x = 0.01;
+    ray_marker.id = 0;
+    ray_marker.color.r = 1.0;
+    ray_marker.color.a = 0.2;
+
+    ray_pub = nh_p.advertise<visualization_msgs::Marker>("rays", 1);
 
     dynamic_reconfigure::Server<imagine_ros::LidarModelConfig> server;
     dynamic_reconfigure::Server<imagine_ros::LidarModelConfig>::CallbackType f;
@@ -360,6 +410,9 @@ int main(int argc, char** argv)
 
             cloud_normals.header.stamp = ros::Time::now();
             marker_pub.publish(cloud_normals);
+
+            ray_marker.header.stamp = ros::Time::now();
+            ray_pub.publish(ray_marker);
         }
         
         ros::spinOnce();

@@ -1,18 +1,16 @@
 <?xml version="1.0"?>
 <launch>
 
-
 <!-- <arg name="meshfile" default="/home/amock/datasets/physics_building/physics.dae" /> -->
 <!-- <arg name="meshfile" default="/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae" /> -->
 <arg name="meshfile" default="/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae" />
-
 
 <node pkg="imagine_ros" type="mesh_publisher" name="mesh_publisher" output="screen">
     <param name="file" type="string" value="$(arg meshfile)" />
     <param name="frame" type="string" value="map" />
 </node>
 
-<node pkg="imagine_ros" type="lidar_simulator" name="imagine_simulator" output="screen">
+<node pkg="imagine_ros" type="ondn_simulator" name="imagine_simulator" output="screen">
     <param name="file" type="string" value="$(arg meshfile)" />
     <param name="frame" type="string" value="map" />
 </node>
