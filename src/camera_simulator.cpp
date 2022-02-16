@@ -75,12 +75,12 @@ geometry_msgs::TransformStamped T_base_map;
 Memory<PinholeModel, RAM> camera_model()
 {
     Memory<PinholeModel, RAM> model(1);
-    model->width = 400;
-    model->height = 300;
-    model->c[0] = 200.0;
-    model->c[1] = 150.0;
-    model->f[0] = 1000.0;
-    model->f[1] = 1000.0;
+    model->width = 200;
+    model->height = 150;
+    model->c[0] = 100.0;
+    model->c[1] = 75.0;
+    model->f[0] = 100.0;
+    model->f[1] = 100.0;
     model->range.min = 0.0;
     model->range.max = 100.0;
     
@@ -111,7 +111,7 @@ void modelCB(imagine_ros::CameraModelConfig &config, uint32_t level)
 
     model->range.min = config.range_min;
     model->range.max = config.range_max;
-    
+
     sim_gpu->setModel(model);
 }
 
