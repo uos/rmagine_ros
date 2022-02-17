@@ -4,8 +4,6 @@
 
 #include <imagine/math/types.h>
 
-
-
 // Include Sphere Simulators
 #include <imagine/simulation/O1DnSimulatorOptix.hpp>
 
@@ -52,7 +50,7 @@ std_msgs::ColorRGBA color_map[] = {
 
 O1DnSimulatorOptixPtr sim_gpu;
 
-O1DnModel<RAM> model;
+O1DnModel model;
 
 // user inputs
 bool pose_received = false;
@@ -75,9 +73,9 @@ std::string base_frame = "base_link";
 geometry_msgs::TransformStamped T_sensor_base;
 geometry_msgs::TransformStamped T_base_map;
 
-O1DnModel<RAM> o1dn_model()
+O1DnModel o1dn_model()
 {
-    O1DnModel<RAM> model;
+    O1DnModel model;
 
     model.orig.x = 0.0;
     model.orig.y = 0.0;
@@ -175,7 +173,6 @@ void fillCloudNormals(
     }
 }
 
-
 void fillRayMarker(
     const Memory<float, RAM>& ranges)
 {
@@ -258,8 +255,6 @@ void simulate()
     sw();
     sim_gpu->simulate(Tbm_gpu, res);
     el = sw();
-    std::cout << "Simulated " << ranges.size() << " ranges, normals and object ids in " << el * 1000.0 << "ms" << std::endl;
-
     
     // Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
     // sw();
@@ -276,6 +271,8 @@ void simulate()
     ranges = res.ranges;
     normals = res.normals;
     object_ids = res.object_ids;
+
+    std::cout << "Simulated " << ranges.size() << " ranges, normals and object ids in " << el * 1000.0 << "ms" << std::endl;
 
     fillPointCloud(ranges, object_ids);
     fillCloudNormals(ranges, normals, object_ids);
@@ -308,11 +305,25 @@ int main(int argc, char** argv)
     // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/datasets/physics_building/physics.dae";
 
+    
     std::string map_frame;
     std::string meshfile;
+    std::vector<float> Tsb_raw;
+    Transform Tsb;
+    // TODO
+    std::string device;
 
-    nh_p.param<std::string>("file", meshfile, "/home/amock/datasets/physics_building/physics.dae");
-    nh_p.param<std::string>("frame", map_frame, "map");
+    nh_p.param<std::string>("map_file", meshfile, "/home/amock/datasets/physics_building/physics.dae");
+    nh_p.param<std::string>("map_frame", map_frame, "map");
+    nh_p.param<std::string>("sensor_frame", sensor_frame, "sensor_frame");
+    nh_p.param<std::string>("device", device, "cpu");
+
+    nh_p.param<std::vector<float> >("Tsb", Tsb_raw, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+    Tsb.t.x = Tsb_raw[0];
+    Tsb.t.y = Tsb_raw[1];
+    Tsb.t.z = Tsb_raw[2];
+    EulerAngles euler = {Tsb_raw[3], Tsb_raw[4], Tsb_raw[5]};
+    Tsb.R = euler;
 
     // EmbreeMapPtr map = importEmbreeMap(mapfile);
     // sim = std::make_shared<EmbreeSimulator>(map);
@@ -323,13 +334,6 @@ int main(int argc, char** argv)
     // Define Sensor Model
     model = o1dn_model();
     sim_gpu->setModel(model);
-
-    // Define Sensor to Base transform
-    Memory<Transform, RAM> Tsb(1);
-    Tsb->setIdentity();
-    // lift scanner up
-    Tsb->t.z = 1.0;
-
     sim_gpu->setTsb(Tsb);
 
     // make point cloud publisher
@@ -374,13 +378,13 @@ int main(int argc, char** argv)
     // CONTINUOUS TF TREE UPDATES
     T_sensor_base.header.frame_id = base_frame;
     T_sensor_base.child_frame_id = sensor_frame;
-    T_sensor_base.transform.rotation.x = Tsb->R.x;
-    T_sensor_base.transform.rotation.y = Tsb->R.y;
-    T_sensor_base.transform.rotation.z = Tsb->R.z;
-    T_sensor_base.transform.rotation.w = Tsb->R.w;
-    T_sensor_base.transform.translation.x = Tsb->t.x;
-    T_sensor_base.transform.translation.y = Tsb->t.y;
-    T_sensor_base.transform.translation.z = Tsb->t.z;
+    T_sensor_base.transform.rotation.x = Tsb.R.x;
+    T_sensor_base.transform.rotation.y = Tsb.R.y;
+    T_sensor_base.transform.rotation.z = Tsb.R.z;
+    T_sensor_base.transform.rotation.w = Tsb.R.w;
+    T_sensor_base.transform.translation.x = Tsb.t.x;
+    T_sensor_base.transform.translation.y = Tsb.t.y;
+    T_sensor_base.transform.translation.z = Tsb.t.z;
 
     ros::Rate r(20);
 

@@ -56,7 +56,7 @@ std_msgs::ColorRGBA color_map[] = {
 
 SphereSimulatorOptixPtr sim_gpu;
 
-Memory<LiDARModel, RAM> model;
+LiDARModel model;
 
 // user inputs
 bool pose_received = false;
@@ -77,21 +77,21 @@ std::string base_frame = "base_link";
 geometry_msgs::TransformStamped T_sensor_base;
 geometry_msgs::TransformStamped T_base_map;
 
-Memory<LiDARModel, RAM> velodyne_model()
+LiDARModel velodyne_model()
 {
-    Memory<LiDARModel, RAM> model(1);
-    model->theta.min = -M_PI;
-    model->theta.max = M_PI;
-    model->theta.size = 440;
-    model->theta.computeStep();
+    LiDARModel model;
+    model.theta.min = -M_PI;
+    model.theta.max = M_PI;
+    model.theta.size = 440;
+    model.theta.computeStep();
     
-    model->phi.min = -0.261799;
-    model->phi.max = 0.261799;
-    model->phi.size = 16;
-    model->phi.computeStep();
+    model.phi.min = -0.261799;
+    model.phi.max = 0.261799;
+    model.phi.size = 16;
+    model.phi.computeStep();
     
-    model->range.min = 0.5;
-    model->range.max = 130.0;
+    model.range.min = 0.5;
+    model.range.max = 130.0;
     return model;
 }
 
@@ -99,28 +99,28 @@ bool first_call = true;
 
 void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level) 
 {
-    if(first_call)
-    {
-        first_call = false;
-        return;
-    }
+    // if(first_call)
+    // {
+    //     first_call = false;
+    //     return;
+    // }
 
     ROS_INFO("Changing Model");
 
     std::cout << level << std::endl;
 
-    model->theta.min = config.theta_min;
-    model->theta.max = config.theta_max;
-    model->theta.size = config.theta_N;
-    model->theta.computeStep();
+    model.theta.min = config.theta_min;
+    model.theta.max = config.theta_max;
+    model.theta.size = config.theta_N;
+    model.theta.computeStep();
 
-    model->phi.min = config.phi_min;
-    model->phi.max = config.phi_max;
-    model->phi.size = config.phi_N;
-    model->phi.computeStep();
+    model.phi.min = config.phi_min;
+    model.phi.max = config.phi_max;
+    model.phi.size = config.phi_N;
+    model.phi.computeStep();
 
-    model->range.min = config.range_min;
-    model->range.max = config.range_max;
+    model.range.min = config.range_min;
+    model.range.max = config.range_max;
 
     sim_gpu->setModel(model);
 }
@@ -130,16 +130,16 @@ void fillPointCloud(
     const Memory<unsigned int, RAM>& object_ids)
 {
     cloud.points.resize(0);
-    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
+    for(unsigned int vid = 0; vid < model.getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
+        for(unsigned int hid = 0; hid < model.getWidth(); hid++)
         {
-            unsigned int buff_id = model->getBufferId(vid, hid);
+            unsigned int buff_id = model.getBufferId(vid, hid);
             float range = ranges[buff_id];
             
-            if(model->range.inside(range))
+            if(model.range.inside(range))
             {
-                Vector ray = model->getRay(vid, hid);
+                Vector ray = model.getRay(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point32 p_ros;
                 p_ros.x = p.x;
@@ -158,16 +158,16 @@ void fillCloudNormals(
 {
     cloud_normals.points.resize(0);
     cloud_normals.colors.resize(0);
-    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
+    for(unsigned int vid = 0; vid < model.getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
+        for(unsigned int hid = 0; hid < model.getWidth(); hid++)
         {
-            unsigned int buff_id = model->getBufferId(vid, hid);
+            unsigned int buff_id = model.getBufferId(vid, hid);
             float range = ranges[buff_id];
             
-            if(model->range.inside(range))
+            if(model.range.inside(range))
             {
-                Vector ray = model->getRay(vid, hid);
+                Vector ray = model.getRay(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point p_ros;
                 p_ros.x = p.x;
@@ -190,22 +190,21 @@ void fillCloudNormals(
     }
 }
 
-
 void fillRayMarker(
     const Memory<float, RAM>& ranges)
 {
     ray_marker.points.resize(0);
     ray_marker.colors.resize(0);
-    for(unsigned int vid = 0; vid < model->getHeight(); vid++)
+    for(unsigned int vid = 0; vid < model.getHeight(); vid++)
     {
-        for(unsigned int hid = 0; hid < model->getWidth(); hid++)
+        for(unsigned int hid = 0; hid < model.getWidth(); hid++)
         {
-            unsigned int buff_id = model->getBufferId(vid, hid);
+            unsigned int buff_id = model.getBufferId(vid, hid);
             float range = ranges[buff_id];
             
-            if(model->range.inside(range))
+            if(model.range.inside(range))
             {
-                Vector ray = model->getRay(vid, hid);
+                Vector ray = model.getRay(vid, hid);
                 Point p_int = ray * range;
                 
                 geometry_msgs::Point p_int_ros;
@@ -261,9 +260,9 @@ void simulate()
 
     using ResultT = Bundle<Ranges<VRAM_CUDA>, Normals<VRAM_CUDA>, ObjectIds<VRAM_CUDA> >;
     ResultT res;
-    res.ranges.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
-    res.normals.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
-    res.object_ids.resize(Tbm_gpu.size() * model->phi.size * model->theta.size);
+    res.ranges.resize(Tbm_gpu.size() * model.phi.size * model.theta.size);
+    res.normals.resize(Tbm_gpu.size() * model.phi.size * model.theta.size);
+    res.object_ids.resize(Tbm_gpu.size() * model.phi.size * model.theta.size);
 
     Memory<float, RAM> ranges;
     Memory<Vector, RAM> normals;
@@ -272,10 +271,9 @@ void simulate()
     sw();
     sim_gpu->simulate(Tbm_gpu, res);
     el = sw();
-    std::cout << "Simulated " << ranges.size() << " ranges, normals and object ids in " << el * 1000.0 << "ms" << std::endl;
-
     
-    // Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
+    
+    // Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model.phi.size * model.theta.size);
     // sw();
     // sim_gpu->simulateNormals(Tbm_gpu, normals_gpu);
     // el = sw();
@@ -289,6 +287,8 @@ void simulate()
     ranges = res.ranges;
     normals = res.normals;
     object_ids = res.object_ids;
+
+    std::cout << "Simulated " << ranges.size() << " ranges, normals and object ids in " << el * 1000.0 << "ms" << std::endl;
 
     fillPointCloud(ranges, object_ids);
     fillCloudNormals(ranges, normals, object_ids);
@@ -324,9 +324,19 @@ int main(int argc, char** argv)
 
     std::string map_frame;
     std::string meshfile;
+    std::vector<float> Tsb_raw;
+    Transform Tsb;
 
-    nh_p.param<std::string>("file", meshfile, "/home/amock/datasets/physics_building/physics.dae");
-    nh_p.param<std::string>("frame", map_frame, "map");
+    nh_p.param<std::string>("map_file", meshfile, "/home/amock/datasets/physics_building/physics.dae");
+    nh_p.param<std::string>("map_frame", map_frame, "map");
+    nh_p.param<std::string>("sensor_frame", sensor_frame, "sensor_frame");
+
+    nh_p.param<std::vector<float> >("Tsb", Tsb_raw, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+    Tsb.t.x = Tsb_raw[0];
+    Tsb.t.y = Tsb_raw[1];
+    Tsb.t.z = Tsb_raw[2];
+    EulerAngles euler = {Tsb_raw[3], Tsb_raw[4], Tsb_raw[5]};
+    Tsb.R = euler;
 
     // EmbreeMapPtr map = importEmbreeMap(mapfile);
     // sim = std::make_shared<EmbreeSimulator>(map);
@@ -337,13 +347,6 @@ int main(int argc, char** argv)
     // Define Sensor Model
     model = velodyne_model();
     sim_gpu->setModel(model);
-
-    // Define Sensor to Base transform
-    Memory<Transform, RAM> Tsb(1);
-    Tsb->setIdentity();
-    // lift scanner up
-    Tsb->t.z = 1.0;
-
     sim_gpu->setTsb(Tsb);
 
     // make point cloud publisher
@@ -387,13 +390,13 @@ int main(int argc, char** argv)
     // CONTINUOUS TF TREE UPDATES
     T_sensor_base.header.frame_id = base_frame;
     T_sensor_base.child_frame_id = sensor_frame;
-    T_sensor_base.transform.rotation.x = Tsb->R.x;
-    T_sensor_base.transform.rotation.y = Tsb->R.y;
-    T_sensor_base.transform.rotation.z = Tsb->R.z;
-    T_sensor_base.transform.rotation.w = Tsb->R.w;
-    T_sensor_base.transform.translation.x = Tsb->t.x;
-    T_sensor_base.transform.translation.y = Tsb->t.y;
-    T_sensor_base.transform.translation.z = Tsb->t.z;
+    T_sensor_base.transform.rotation.x = Tsb.R.x;
+    T_sensor_base.transform.rotation.y = Tsb.R.y;
+    T_sensor_base.transform.rotation.z = Tsb.R.z;
+    T_sensor_base.transform.rotation.w = Tsb.R.w;
+    T_sensor_base.transform.translation.x = Tsb.t.x;
+    T_sensor_base.transform.translation.y = Tsb.t.y;
+    T_sensor_base.transform.translation.z = Tsb.t.z;
 
     ros::Rate r(20);
 
