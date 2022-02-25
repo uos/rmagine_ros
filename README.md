@@ -1,14 +1,14 @@
-# imagine_ros
+# rmagine_ros
 
 Robots simulate their sensors in triangle meshes.
 
-ROS integration of **imagine** library and examples for:
-- Basic usage of imagine library
+ROS integration of **rmagine** library and examples for:
+- Basic usage of rmagine library
 - Simulating different attributes for intersections
 - Advanced examples to speed up your applications 
 
 ## Dependency
-imagine library to be installed
+rmagine library to be installed
 
 ## Nodes
 
@@ -27,7 +27,7 @@ Simulate a camera sensor.
 
 ### Reinforcement Learning (RL) on real robots
 
-Choosing an action depending on your sensory data. Given a list of actions we change our state uncertainly. Possible sensory data has to therefore simulate from a lot of possible states to choose the best next action. With **imagine** the simulation time becomes so low that even on a mobile robot such methods can be applied (See perfomance section of imagine-library).
+Choosing an action depending on your sensory data. Given a list of actions we change our state uncertainly. Possible sensory data has to therefore simulate from a lot of possible states to choose the best next action. With **rmagine** the simulation time becomes so low that even on a mobile robot such methods can be applied (See perfomance section of rmagine-library).
 
 ### Probabilistic Localization
 

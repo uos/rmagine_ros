@@ -4,9 +4,9 @@
 #include <mesh_msgs/MeshGeometryStamped.h>
 #include <mesh_msgs/TriangleIndices.h>
 
-#include <imagine/map/EmbreeMap.hpp>
+#include <rmagine/map/EmbreeMap.hpp>
 
-using namespace imagine;
+using namespace rmagine;
 
 // mesh_msgs::MeshGeometry assimpToRos(const aiMesh* mesh)
 // {

@@ -2,29 +2,31 @@
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
-#include <imagine/math/types.h>
+#include <rmagine/math/types.h>
 
 
 
 // Include Sphere Simulators
-#include <imagine/simulation/SphereSimulatorEmbree.hpp>
-#include <imagine/simulation/SphereSimulatorOptix.hpp>
+#include <rmagine/simulation/SphereSimulatorEmbree.hpp>
+#include <rmagine/simulation/SphereSimulatorOptix.hpp>
+
+#include <rmagine/noise/noise.cuh>
 
 #include <sensor_msgs/PointCloud.h>
 
 #include <tf2_ros/transform_broadcaster.h>
 #include <visualization_msgs/Marker.h>
-#include <imagine/util/StopWatch.hpp>
+#include <rmagine/util/StopWatch.hpp>
 
 
 #include <dynamic_reconfigure/server.h>
-#include <imagine_ros/LidarModelConfig.h>
+#include <rmagine_ros/LidarModelConfig.h>
 
 #include <std_msgs/ColorRGBA.h>
 
 #include <utility>
 
-using namespace imagine;
+using namespace rmagine;
 
 static const std_msgs::ColorRGBA make_color(float r, float g, float b, float a)
 {
@@ -61,6 +63,10 @@ LiDARModel model;
 // user inputs
 bool pose_received = false;
 
+bool noise_enabled = false;
+float noise_mean = 0.0;
+float noise_stddev = 0.0;
+
 ros::Publisher cloud_pub;
 sensor_msgs::PointCloud cloud;
 ros::Publisher marker_pub;
@@ -81,23 +87,21 @@ LiDARModel velodyne_model()
 {
     LiDARModel model;
     model.theta.min = -M_PI;
-    model.theta.max = M_PI;
-    model.theta.size = 440;
-    model.theta.computeStep();
+    model.theta.inc = 0.4 * M_PI / 180.0;
+    model.theta.size = 900;
     
-    model.phi.min = -0.261799;
-    model.phi.max = 0.261799;
+    model.phi.min = -15.0 * M_PI / 180.0;
+    model.phi.inc = 2.0 * M_PI / 180.0;
     model.phi.size = 16;
-    model.phi.computeStep();
     
-    model.range.min = 0.5;
-    model.range.max = 130.0;
+    model.range.min = 0.0;
+    model.range.max = 100.0;
     return model;
 }
 
 bool first_call = true;
 
-void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level) 
+void modelCB(rmagine_ros::LidarModelConfig &config, uint32_t level) 
 {
     // if(first_call)
     // {
@@ -107,22 +111,22 @@ void modelCB(imagine_ros::LidarModelConfig &config, uint32_t level)
 
     ROS_INFO("Changing Model");
 
-    std::cout << level << std::endl;
-
     model.theta.min = config.theta_min;
-    model.theta.max = config.theta_max;
-    model.theta.size = config.theta_N;
-    model.theta.computeStep();
+    model.theta.inc = DiscreteInterval::IncFromMinMaxSize(config.theta_min, config.theta_max, config.theta_size);
+    model.theta.size = config.theta_size;
 
     model.phi.min = config.phi_min;
-    model.phi.max = config.phi_max;
-    model.phi.size = config.phi_N;
-    model.phi.computeStep();
+    model.phi.inc = DiscreteInterval::IncFromMinMaxSize(config.phi_min, config.phi_max, config.phi_size);
+    model.phi.size = config.phi_size;
 
     model.range.min = config.range_min;
     model.range.max = config.range_max;
 
     sim_gpu->setModel(model);
+
+    noise_enabled = config.noise_enabled;
+    noise_mean = config.noise_mean;
+    noise_stddev = config.noise_stddev;
 }
 
 void fillPointCloud(
@@ -139,7 +143,7 @@ void fillPointCloud(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point32 p_ros;
                 p_ros.x = p.x;
@@ -167,7 +171,7 @@ void fillCloudNormals(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point p_ros;
                 p_ros.x = p.x;
@@ -204,7 +208,7 @@ void fillRayMarker(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p_int = ray * range;
                 
                 geometry_msgs::Point p_int_ros;
@@ -272,7 +276,6 @@ void simulate()
     sim_gpu->simulate(Tbm_gpu, res);
     el = sw();
     
-    
     // Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model.phi.size * model.theta.size);
     // sw();
     // sim_gpu->simulateNormals(Tbm_gpu, normals_gpu);
@@ -285,6 +288,11 @@ void simulate()
     // std::cout << "Simulated " << ranges_gpu.size() << " ranges and normals in " << el * 1000.0 << "ms" << std::endl;
     
     ranges = res.ranges;
+    if(noise_enabled)
+    {
+        GaussianNoise(noise_mean, noise_stddev).apply(ranges);
+    }
+
     normals = res.normals;
     object_ids = res.object_ids;
 
@@ -315,9 +323,9 @@ int main(int argc, char** argv)
     
 
     // hand crafted models
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/sphere.ply";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/two_cubes.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/many_objects.dae";
     // real models
     // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/datasets/physics_building/physics.dae";
@@ -375,8 +383,8 @@ int main(int argc, char** argv)
 
     ray_pub = nh_p.advertise<visualization_msgs::Marker>("rays", 1);
 
-    dynamic_reconfigure::Server<imagine_ros::LidarModelConfig> server;
-    dynamic_reconfigure::Server<imagine_ros::LidarModelConfig>::CallbackType f;
+    dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig> server;
+    dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig>::CallbackType f;
 
     f = boost::bind(&modelCB, _1, _2);
     server.setCallback(f);

@@ -2,23 +2,23 @@
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
-#include <imagine/math/types.h>
+#include <rmagine/math/types.h>
 
 // Include Sphere Simulators
-#include <imagine/simulation/O1DnSimulatorOptix.hpp>
+#include <rmagine/simulation/O1DnSimulatorOptix.hpp>
 
 #include <sensor_msgs/PointCloud.h>
 
 #include <tf2_ros/transform_broadcaster.h>
 #include <visualization_msgs/Marker.h>
-#include <imagine/util/StopWatch.hpp>
+#include <rmagine/util/StopWatch.hpp>
 
 
 #include <std_msgs/ColorRGBA.h>
 
 #include <utility>
 
-using namespace imagine;
+using namespace rmagine;
 
 static const std_msgs::ColorRGBA make_color(float r, float g, float b, float a)
 {
@@ -84,7 +84,7 @@ O1DnModel o1dn_model()
     model.width = 200;
     model.height = 1;
 
-    model.rays.resize(model.width * model.height);
+    model.dirs.resize(model.width * model.height);
 
     float step_size = 0.05;
 
@@ -94,11 +94,11 @@ O1DnModel o1dn_model()
         float x = cos(y) * 2.0 + 2.0;
         float z = -1.0;
 
-        model.rays[i].x = x;
-        model.rays[i].y = y;
-        model.rays[i].z = z;
+        model.dirs[i].x = x;
+        model.dirs[i].y = y;
+        model.dirs[i].z = z;
 
-        model.rays[i].normalize();
+        model.dirs[i].normalize();
     }
 
     model.range.min = 0.0;
@@ -122,7 +122,7 @@ void fillPointCloud(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point32 p_ros;
                 p_ros.x = p.x;
@@ -150,7 +150,7 @@ void fillCloudNormals(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point p_ros;
                 p_ros.x = p.x;
@@ -187,7 +187,7 @@ void fillRayMarker(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p_int = ray * range;
                 
                 geometry_msgs::Point p_int_ros;
@@ -298,9 +298,9 @@ int main(int argc, char** argv)
     ROS_INFO("o1dn_simulator started.");
 
     // hand crafted models
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/sphere.ply";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/two_cubes.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/many_objects.dae";
     // real models
     // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/datasets/physics_building/physics.dae";
@@ -364,8 +364,8 @@ int main(int argc, char** argv)
 
     ray_pub = nh_p.advertise<visualization_msgs::Marker>("rays", 1);
 
-    // dynamic_reconfigure::Server<imagine_ros::LidarModelConfig> server;
-    // dynamic_reconfigure::Server<imagine_ros::LidarModelConfig>::CallbackType f;
+    // dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig> server;
+    // dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig>::CallbackType f;
 
     // f = boost::bind(&modelCB, _1, _2);
     // server.setCallback(f);

@@ -2,28 +2,28 @@
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
-#include <imagine/math/types.h>
+#include <rmagine/math/types.h>
 
 // Include Sphere Simulators
 
-#include <imagine/simulation/PinholeSimulatorEmbree.hpp>
-#include <imagine/simulation/PinholeSimulatorOptix.hpp>
+#include <rmagine/simulation/PinholeSimulatorEmbree.hpp>
+#include <rmagine/simulation/PinholeSimulatorOptix.hpp>
 
 #include <sensor_msgs/PointCloud.h>
 
 #include <tf2_ros/transform_broadcaster.h>
 #include <visualization_msgs/Marker.h>
-#include <imagine/util/StopWatch.hpp>
+#include <rmagine/util/StopWatch.hpp>
 
 
 #include <dynamic_reconfigure/server.h>
-#include <imagine_ros/CameraModelConfig.h>
+#include <rmagine_ros/CameraModelConfig.h>
 
 #include <std_msgs/ColorRGBA.h>
 
 #include <utility>
 
-using namespace imagine;
+using namespace rmagine;
 
 static const std_msgs::ColorRGBA make_color(float r, float g, float b, float a)
 {
@@ -92,7 +92,7 @@ PinholeModel camera_model()
 
 bool first_call = true;
 
-void modelCB(imagine_ros::CameraModelConfig &config, uint32_t level) 
+void modelCB(rmagine_ros::CameraModelConfig &config, uint32_t level) 
 {
     // if(first_call)
     // {
@@ -130,7 +130,7 @@ void fillPointCloud(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point32 p_ros;
                 p_ros.x = p.x;
@@ -158,7 +158,7 @@ void fillCloudNormals(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p = ray * range;
                 geometry_msgs::Point p_ros;
                 p_ros.x = p.x;
@@ -195,7 +195,7 @@ void fillRayMarker(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point p_int = ray * range;
                 
                 geometry_msgs::Point p_int_ros;
@@ -304,9 +304,9 @@ int main(int argc, char** argv)
     ROS_INFO("camera_simulator_node started.");
     
     // hand crafted models
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/sphere.ply";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/two_cubes.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/many_objects.dae";
     // real models
     // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/datasets/physics_building/physics.dae";
@@ -367,8 +367,8 @@ int main(int argc, char** argv)
 
     ray_pub = nh_p.advertise<visualization_msgs::Marker>("rays", 1);
 
-    dynamic_reconfigure::Server<imagine_ros::CameraModelConfig> server;
-    dynamic_reconfigure::Server<imagine_ros::CameraModelConfig>::CallbackType f;
+    dynamic_reconfigure::Server<rmagine_ros::CameraModelConfig> server;
+    dynamic_reconfigure::Server<rmagine_ros::CameraModelConfig>::CallbackType f;
 
     f = boost::bind(&modelCB, _1, _2);
     server.setCallback(f);

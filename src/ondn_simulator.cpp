@@ -2,25 +2,25 @@
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 
-#include <imagine/math/types.h>
+#include <rmagine/math/types.h>
 
 
 
 // Include Sphere Simulators
-#include <imagine/simulation/OnDnSimulatorOptix.hpp>
+#include <rmagine/simulation/OnDnSimulatorOptix.hpp>
 
 #include <sensor_msgs/PointCloud.h>
 
 #include <tf2_ros/transform_broadcaster.h>
 #include <visualization_msgs/Marker.h>
-#include <imagine/util/StopWatch.hpp>
+#include <rmagine/util/StopWatch.hpp>
 
 
 #include <std_msgs/ColorRGBA.h>
 
 #include <utility>
 
-using namespace imagine;
+using namespace rmagine;
 
 static const std_msgs::ColorRGBA make_color(float r, float g, float b, float a)
 {
@@ -82,8 +82,8 @@ OnDnModel ondn_model()
     model.width = 200;
     model.height = 1;
 
-    model.rays.resize(model.width * model.height);
-    model.orig.resize(model.width * model.height);
+    model.dirs.resize(model.width * model.height);
+    model.origs.resize(model.width * model.height);
 
     float step_size = 0.05;
 
@@ -94,13 +94,13 @@ OnDnModel ondn_model()
         float y = sin(step);
         float x = cos(step);
 
-        model.orig[i].x = 0.0;
-        model.orig[i].y = y * percent;
-        model.orig[i].z = x * percent;
+        model.origs[i].x = 0.0;
+        model.origs[i].y = y * percent;
+        model.origs[i].z = x * percent;
 
-        model.rays[i].x = 1.0;
-        model.rays[i].y = 0.0;
-        model.rays[i].z = 0.0;
+        model.dirs[i].x = 1.0;
+        model.dirs[i].y = 0.0;
+        model.dirs[i].z = 0.0;
     }
 
     model.range.min = 0.0;
@@ -124,7 +124,7 @@ void fillPointCloud(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point orig = model.getOrigin(vid, hid);
                 Point p = orig + ray * range;
                 geometry_msgs::Point32 p_ros;
@@ -153,7 +153,7 @@ void fillCloudNormals(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point orig = model.getOrigin(vid, hid);
                 Point p = orig + ray * range;
                 geometry_msgs::Point p_ros;
@@ -192,7 +192,7 @@ void fillRayMarker(
             
             if(model.range.inside(range))
             {
-                Vector ray = model.getRay(vid, hid);
+                Vector ray = model.getDirection(vid, hid);
                 Point orig = model.getOrigin(vid, hid);
                 Point p_int = orig + ray * range;
                 
@@ -304,9 +304,9 @@ int main(int argc, char** argv)
     ROS_INFO("ondn_simulator started.");
 
     // hand crafted models
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/sphere.ply";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/two_cubes.dae";
-    // std::string mapfile = "/home/amock/workspaces/imagine_stack/imagine/dat/many_objects.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/sphere.ply";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/two_cubes.dae";
+    // std::string mapfile = "/home/amock/workspaces/rmagine_stack/rmagine/dat/many_objects.dae";
     // real models
     // std::string mapfile = "/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae";
     // std::string mapfile = "/home/amock/datasets/physics_building/physics.dae";
@@ -366,8 +366,8 @@ int main(int argc, char** argv)
 
     ray_pub = nh_p.advertise<visualization_msgs::Marker>("rays", 1);
 
-    // dynamic_reconfigure::Server<imagine_ros::LidarModelConfig> server;
-    // dynamic_reconfigure::Server<imagine_ros::LidarModelConfig>::CallbackType f;
+    // dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig> server;
+    // dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig>::CallbackType f;
 
     // f = boost::bind(&modelCB, _1, _2);
     // server.setCallback(f);

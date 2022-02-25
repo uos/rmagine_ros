@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-    <name>imagine_ros</name>
+    <name>rmagine_ros</name>
     <version>1.0.0</version>
-    <description>The imagine_ros package</description>
+    <description>The rmagine_ros package</description>
 
     <maintainer email="amock@uos.de">Alexander Mock</maintainer>
 

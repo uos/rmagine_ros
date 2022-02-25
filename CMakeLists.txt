@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.2)
-project(imagine_ros)
+project(rmagine_ros)
 
 find_package(catkin REQUIRED COMPONENTS
     roscpp
@@ -19,8 +19,8 @@ include_directories(
     ${catkin_INCLUDE_DIRS}
 )
 
-find_package(imagine REQUIRED)
-include_directories(${imagine_INCLUDE_DIRS})
+find_package(rmagine REQUIRED)
+include_directories(${rmagine_INCLUDE_DIRS})
 
 catkin_package(
     INCLUDE_DIRS 
@@ -31,7 +31,7 @@ catkin_package(
         sensor_msgs
         tf2_ros
     DEPENDS 
-        imagine
+        rmagine
 )
 
 
@@ -50,7 +50,7 @@ add_dependencies(lidar_simulator
 ## Specify libraries to link a library or executable target against
 target_link_libraries(lidar_simulator
     ${catkin_LIBRARIES}
-    ${imagine_LIBRARIES}
+    ${rmagine_LIBRARIES}
 )
 
 
@@ -65,7 +65,7 @@ add_dependencies(camera_simulator
 ## Specify libraries to link a library or executable target against
 target_link_libraries(camera_simulator
     ${catkin_LIBRARIES}
-    ${imagine_LIBRARIES}
+    ${rmagine_LIBRARIES}
 )
 
 
@@ -81,7 +81,7 @@ add_dependencies(o1dn_simulator
 ## Specify libraries to link a library or executable target against
 target_link_libraries(o1dn_simulator
     ${catkin_LIBRARIES}
-    ${imagine_LIBRARIES}
+    ${rmagine_LIBRARIES}
 )
 
 
@@ -97,7 +97,7 @@ add_dependencies(ondn_simulator
 ## Specify libraries to link a library or executable target against
 target_link_libraries(ondn_simulator
     ${catkin_LIBRARIES}
-    ${imagine_LIBRARIES}
+    ${rmagine_LIBRARIES}
 )
 
 
@@ -112,5 +112,5 @@ add_dependencies(mesh_publisher
 ## Specify libraries to link a library or executable target against
 target_link_libraries(mesh_publisher
     ${catkin_LIBRARIES}
-    ${imagine_LIBRARIES}
+    ${rmagine_LIBRARIES}
 )
