@@ -51,9 +51,9 @@ mesh_msgs::MeshGeometry embreeToRos(const EmbreeMesh& mesh)
     for(int i=0; i<mesh.Nvertices; i++)
     {
         geometry_msgs::Point vertex_ros;
-        vertex_ros.x = mesh.vertices[i * 3 + 0];
-        vertex_ros.y = mesh.vertices[i * 3 + 1];
-        vertex_ros.z = mesh.vertices[i * 3 + 2];
+        vertex_ros.x = mesh.vertices[i].x;
+        vertex_ros.y = mesh.vertices[i].y;
+        vertex_ros.z = mesh.vertices[i].z;
         mesh_ros.vertices.push_back(vertex_ros);
     }
 
@@ -61,9 +61,9 @@ mesh_msgs::MeshGeometry embreeToRos(const EmbreeMesh& mesh)
     for(int i=0; i<mesh.Nfaces; i++)
     {
         mesh_msgs::TriangleIndices face_ros;
-        face_ros.vertex_indices[0] = mesh.faces[i * 3 + 0];
-        face_ros.vertex_indices[1] = mesh.faces[i * 3 + 1];
-        face_ros.vertex_indices[2] = mesh.faces[i * 3 + 2];
+        face_ros.vertex_indices[0] = mesh.faces[i].v0;
+        face_ros.vertex_indices[1] = mesh.faces[i].v1;
+        face_ros.vertex_indices[2] = mesh.faces[i].v2;
         mesh_ros.faces.push_back(face_ros);
     }
 

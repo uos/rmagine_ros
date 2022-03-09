@@ -5,7 +5,10 @@
 #include <rmagine/math/types.h>
 
 // Include Sphere Simulators
-#include <rmagine/simulation/O1DnSimulatorOptix.hpp>
+#include <rmagine/simulation/SimulatorEmbree.hpp>
+#include <rmagine/simulation/SimulatorOptix.hpp>
+
+#include <rmagine/noise/noise.cuh>
 
 #include <sensor_msgs/PointCloud.h>
 
@@ -13,6 +16,8 @@
 #include <visualization_msgs/Marker.h>
 #include <rmagine/util/StopWatch.hpp>
 
+#include <dynamic_reconfigure/server.h>
+#include <rmagine_ros/O1DnModelConfig.h>
 
 #include <std_msgs/ColorRGBA.h>
 
@@ -46,14 +51,21 @@ std_msgs::ColorRGBA color_map[] = {
     make_color(0.0, 0.0, 0.0), // black
 };
 
-// EmbreeSimulatorPtr sim;
+SimulatorPtr<O1DnModel, Embree> sim_cpu;
 
-O1DnSimulatorOptixPtr sim_gpu;
+SimulatorPtr<O1DnModel, Optix> sim_gpu;
 
 O1DnModel model;
 
 // user inputs
 bool pose_received = false;
+
+
+bool use_gpu = false;
+bool noise_enabled = false;
+float noise_mean = 0.0;
+float noise_stddev = 0.0;
+
 
 ros::Publisher cloud_pub;
 // point cloud only
@@ -107,6 +119,27 @@ O1DnModel o1dn_model()
     return model;
 }
 
+void modelCB(rmagine_ros::O1DnModelConfig &config, uint32_t level) 
+{
+    ROS_INFO("Changing Model");
+
+    model.range.min = config.range_min;
+    model.range.max = config.range_max;
+
+    sim_gpu->setModel(model);
+    sim_cpu->setModel(model);
+
+    if(config.computing_unit == 0)
+    {
+        use_gpu = false;
+    } else if(config.computing_unit == 1) {
+        use_gpu = true;
+    }
+
+    noise_enabled = config.noise;
+    noise_mean = config.noise_mean;
+    noise_stddev = config.noise_stddev;
+}
 
 void fillPointCloud(
     const Memory<float, RAM>& ranges, 
@@ -208,7 +241,6 @@ void fillRayMarker(
     }
 }
 
-
 void poseCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 {
 
@@ -242,41 +274,61 @@ void simulate()
     StopWatch sw;
     double el;
 
-    using ResultT = Bundle<Ranges<VRAM_CUDA>, Normals<VRAM_CUDA>, ObjectIds<VRAM_CUDA> >;
-    ResultT res;
-    res.ranges.resize(Tbm_gpu.size() * model.size() );
-    res.normals.resize(Tbm_gpu.size() * model.size() );
-    res.object_ids.resize(Tbm_gpu.size() * model.size() );
+    using ResultTCPU = Bundle<
+        Ranges<RAM>, 
+        Normals<RAM>, 
+        ObjectIds<RAM> >;
 
-    Memory<float, RAM> ranges;
-    Memory<Vector, RAM> normals;
-    Memory<unsigned int, RAM> object_ids;
+    ResultTCPU res_cpu;
 
-    sw();
-    sim_gpu->simulate(Tbm_gpu, res);
-    el = sw();
+    if(use_gpu)
+    {
+        using ResultTGPU = Bundle<
+        Ranges<VRAM_CUDA>, 
+        Normals<VRAM_CUDA>, 
+        ObjectIds<VRAM_CUDA> >;
     
-    // Memory<Vector, VRAM_CUDA> normals_gpu(Tbm_gpu.size() * model->phi.size * model->theta.size);
-    // sw();
-    // sim_gpu->simulateNormals(Tbm_gpu, normals_gpu);
-    // el = sw();
-    // std::cout << "Simulated cloud normals in " << el * 1000.0 << "ms" << std::endl;
+        ResultTGPU res_gpu;
+        res_gpu.ranges.resize(Tbm_gpu.size() * model.size() );
+        res_gpu.normals.resize(Tbm_gpu.size() * model.size() );
+        res_gpu.object_ids.resize(Tbm_gpu.size() * model.size() );
 
-    // sw();
-    // sim_gpu->simulate(Tbm_gpu, ranges_gpu, normals_gpu);
-    // el = sw();
-    // std::cout << "Simulated " << ranges_gpu.size() << " ranges and normals in " << el * 1000.0 << "ms" << std::endl;
+        sw();
+        sim_gpu->simulate(Tbm_gpu, res_gpu);
+        el = sw();
 
-    
-    ranges = res.ranges;
-    normals = res.normals;
-    object_ids = res.object_ids;
+        // download
+        res_cpu.ranges = res_gpu.ranges;
+        res_cpu.normals = res_gpu.normals;
+        res_cpu.object_ids = res_gpu.object_ids;
 
-    std::cout << "Simulated " << ranges.size() << " ranges, normals and object ids in " << el * 1000.0 << "ms" << std::endl;
+    } else {
+        res_cpu.ranges.resize(Tbm.size() * model.size() );
+        res_cpu.normals.resize(Tbm.size() * model.size() );
+        res_cpu.object_ids.resize(Tbm.size() * model.size() );
 
-    fillPointCloud(ranges, object_ids);
-    fillCloudNormals(ranges, normals, object_ids);
-    fillRayMarker(ranges);
+        sw();
+        sim_cpu->simulate(Tbm, res_cpu);
+        el = sw();
+    }
+
+    if(noise_enabled)
+    {
+        GaussianNoise(noise_mean, noise_stddev).apply(res_cpu.ranges);
+    }
+
+    if(use_gpu)
+    {
+        std::cout << "[GPU] ";
+    } else {
+        std::cout << "[CPU] ";
+    }
+
+    std::cout << "Simulated " << res_cpu.ranges.size() << " ranges, normals and object ids in " << el * 1000.0 << "ms" << std::endl;
+
+    fillPointCloud(res_cpu.ranges, res_cpu.object_ids);
+    fillCloudNormals(res_cpu.ranges, res_cpu.normals, res_cpu.object_ids);
+    fillRayMarker(res_cpu.ranges);
 }
 
 void updateTF()
@@ -325,8 +377,8 @@ int main(int argc, char** argv)
     EulerAngles euler = {Tsb_raw[3], Tsb_raw[4], Tsb_raw[5]};
     Tsb.R = euler;
 
-    // EmbreeMapPtr map = importEmbreeMap(mapfile);
-    // sim = std::make_shared<EmbreeSimulator>(map);
+    EmbreeMapPtr map_cpu = importEmbreeMap(meshfile);
+    sim_cpu = std::make_shared<O1DnSimulatorEmbree>(map_cpu);
 
     OptixMapPtr map_gpu = importOptixMap(meshfile);
     sim_gpu = std::make_shared<O1DnSimulatorOptix>(map_gpu);
@@ -334,7 +386,9 @@ int main(int argc, char** argv)
     // Define Sensor Model
     model = o1dn_model();
     sim_gpu->setModel(model);
+    sim_cpu->setModel(model);
     sim_gpu->setTsb(Tsb);
+    sim_cpu->setTsb(Tsb);
 
     // make point cloud publisher
     cloud.header.frame_id = sensor_frame;
@@ -364,11 +418,11 @@ int main(int argc, char** argv)
 
     ray_pub = nh_p.advertise<visualization_msgs::Marker>("rays", 1);
 
-    // dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig> server;
-    // dynamic_reconfigure::Server<rmagine_ros::LidarModelConfig>::CallbackType f;
+    dynamic_reconfigure::Server<rmagine_ros::O1DnModelConfig> server;
+    dynamic_reconfigure::Server<rmagine_ros::O1DnModelConfig>::CallbackType f;
 
-    // f = boost::bind(&modelCB, _1, _2);
-    // server.setCallback(f);
+    f = boost::bind(&modelCB, _1, _2);
+    server.setCallback(f);
 
     // Wait for pose to come in
     ros::Subscriber pose_sub = nh.subscribe<geometry_msgs::PoseWithCovarianceStamped>("initialpose", 1, poseCB);

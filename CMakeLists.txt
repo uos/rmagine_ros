@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
 generate_dynamic_reconfigure_options(
   cfg/LidarModel.cfg
   cfg/CameraModel.cfg
+  cfg/O1DnModel.cfg
+  cfg/OnDnModel.cfg
 )
 
 include_directories(
