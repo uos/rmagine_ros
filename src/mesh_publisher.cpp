@@ -43,7 +43,7 @@ using namespace rmagine;
 //     return mesh_ros;
 // }
 
-mesh_msgs::MeshGeometry embreeToRos(const EmbreeMesh& mesh)
+mesh_msgs::MeshGeometry embreeToRos(const EmbreeMesh& mesh, Matrix4x4 T)
 {
     mesh_msgs::MeshGeometry mesh_ros;
 
@@ -51,9 +51,14 @@ mesh_msgs::MeshGeometry embreeToRos(const EmbreeMesh& mesh)
     for(int i=0; i<mesh.Nvertices; i++)
     {
         geometry_msgs::Point vertex_ros;
-        vertex_ros.x = mesh.vertices[i].x;
-        vertex_ros.y = mesh.vertices[i].y;
-        vertex_ros.z = mesh.vertices[i].z;
+        auto vt = T * mesh.vertices[i];
+        vertex_ros.x = vt.x;
+        vertex_ros.y = vt.y;
+        vertex_ros.z = vt.z;
+
+        // vertex_ros.x = mesh.vertices[i].x;
+        // vertex_ros.y = mesh.vertices[i].y;
+        // vertex_ros.z = mesh.vertices[i].z;
         mesh_ros.vertices.push_back(vertex_ros);
     }
 
@@ -86,8 +91,17 @@ int main(int argc, char** argv)
 
     std::vector<mesh_msgs::MeshGeometryStamped> meshes_ros;
 
-    for(size_t i=0; i<map->meshes.size(); i++)
+    for(size_t i=0; i<map->instances.size(); i++)
     {
+        auto instance = map->instances[i];
+
+
+        // auto trans = instance->T.translation();
+        // trans.z += 20.0;
+        // instance->T.setTranslation(trans);
+        // instance->update();
+
+        std::cout << "Creating mesh from instance: " << instance->instID << ", geom: " << instance->mesh->geomID << std::endl; 
         mesh_msgs::MeshGeometryStamped mesh_ros;
         mesh_ros.header.frame_id = map_frame;
         mesh_ros.header.stamp = ros::Time::now();
@@ -95,9 +109,24 @@ int main(int argc, char** argv)
         ss << i;
         mesh_ros.uuid = ss.str();
         std::cout << "Converting Mesh " << ss.str() << std::endl;
-        mesh_ros.mesh_geometry = embreeToRos(map->meshes[i]);
+        mesh_ros.mesh_geometry = embreeToRos(*instance->mesh, instance->T);
+
         meshes_ros.push_back(mesh_ros);
     }
+
+
+    // for(size_t i=0; i<map->meshes.size(); i++)
+    // {
+    //     mesh_msgs::MeshGeometryStamped mesh_ros;
+    //     mesh_ros.header.frame_id = map_frame;
+    //     mesh_ros.header.stamp = ros::Time::now();
+    //     std::stringstream ss;
+    //     ss << i;
+    //     mesh_ros.uuid = ss.str();
+    //     std::cout << "Converting Mesh " << ss.str() << std::endl;
+    //     mesh_ros.mesh_geometry = embreeToRos(*map->meshes[i]);
+    //     meshes_ros.push_back(mesh_ros);
+    // }
 
     std::vector<ros::Publisher> mesh_pubs;
 
