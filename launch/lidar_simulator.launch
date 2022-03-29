@@ -3,8 +3,8 @@
 
 
 <!-- <arg name="meshfile" default="/home/amock/datasets/physics_building/physics.dae" /> -->
-<arg name="meshfile" default="/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae" />
-<!-- <arg name="meshfile" default="/home/amock/workspaces/rmagine_stack/rmagine/dat/many_objects.dae" /> -->
+<!-- <arg name="meshfile" default="/home/amock/workspaces/ros/mamcl_ws/src/uos_tools/uos_gazebo_worlds/Media/models/avz_neu.dae" /> -->
+<arg name="meshfile" default="/home/amock/workspaces/rmagine_stack/rmagine/dat/many_objects.dae" />
 
 <node pkg="rmagine_ros" type="mesh_publisher" name="mesh_publisher" output="screen">
     <param name="file" type="string" value="$(arg meshfile)" />

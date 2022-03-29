@@ -8,41 +8,6 @@
 
 using namespace rmagine;
 
-// mesh_msgs::MeshGeometry assimpToRos(const aiMesh* mesh)
-// {
-//     mesh_msgs::MeshGeometry mesh_ros;
-
-//     for(int i=0; i<mesh->mNumVertices; i++)
-//     {
-//         const aiVector3D& vertex = mesh->mVertices[i];
-        
-//         geometry_msgs::Point vertex_ros;
-//         vertex_ros.x = vertex.x;
-//         vertex_ros.y = vertex.y;
-//         vertex_ros.z = vertex.z;
-
-//         mesh_ros.vertices.push_back(vertex_ros);
-//     }
-
-//     for(int i=0; i<mesh->mNumFaces; i++)
-//     {
-//         const aiFace& face = mesh->mFaces[i];
-
-//         mesh_msgs::TriangleIndices face_ros;
-//         if(face.mNumIndices > 3) 
-//         {
-//             std::cout << "WARNING: found more than 3 indices in triangle." << std::endl;
-//         }
-//         face_ros.vertex_indices[0] = face.mIndices[0];
-//         face_ros.vertex_indices[1] = face.mIndices[1];
-//         face_ros.vertex_indices[2] = face.mIndices[2];
-
-//         mesh_ros.faces.push_back(face_ros);
-//     }
-
-//     return mesh_ros;
-// }
-
 mesh_msgs::MeshGeometry embreeToRos(const EmbreeMesh& mesh, Matrix4x4 T)
 {
     mesh_msgs::MeshGeometry mesh_ros;
@@ -55,10 +20,6 @@ mesh_msgs::MeshGeometry embreeToRos(const EmbreeMesh& mesh, Matrix4x4 T)
         vertex_ros.x = vt.x;
         vertex_ros.y = vt.y;
         vertex_ros.z = vt.z;
-
-        // vertex_ros.x = mesh.vertices[i].x;
-        // vertex_ros.y = mesh.vertices[i].y;
-        // vertex_ros.z = mesh.vertices[i].z;
         mesh_ros.vertices.push_back(vertex_ros);
     }
 
@@ -95,13 +56,9 @@ int main(int argc, char** argv)
     {
         auto instance = map->instances[i];
 
+        auto mesh = instance->mesh();
 
-        // auto trans = instance->T.translation();
-        // trans.z += 20.0;
-        // instance->T.setTranslation(trans);
-        // instance->update();
-
-        std::cout << "Creating mesh from instance: " << instance->instID << ", geom: " << instance->mesh->geomID << std::endl; 
+        std::cout << "Creating mesh from instance: " << instance->instID << ", geom: " << mesh->geomID << std::endl; 
         mesh_msgs::MeshGeometryStamped mesh_ros;
         mesh_ros.header.frame_id = map_frame;
         mesh_ros.header.stamp = ros::Time::now();
@@ -109,7 +66,7 @@ int main(int argc, char** argv)
         ss << i;
         mesh_ros.uuid = ss.str();
         std::cout << "Converting Mesh " << ss.str() << std::endl;
-        mesh_ros.mesh_geometry = embreeToRos(*instance->mesh, instance->T);
+        mesh_ros.mesh_geometry = embreeToRos(*mesh, instance->T);
 
         meshes_ros.push_back(mesh_ros);
     }
