@@ -55,7 +55,6 @@ target_link_libraries(lidar_simulator
     ${rmagine_LIBRARIES}
 )
 
-
 add_executable(camera_simulator src/camera_simulator.cpp)
 
 add_dependencies(camera_simulator 
