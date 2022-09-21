@@ -9,7 +9,14 @@
 #include <rmagine/simulation/SimulatorEmbree.hpp>
 #include <rmagine/simulation/SimulatorOptix.hpp>
 
-#include <rmagine/noise/noise.cuh>
+
+#include <rmagine/noise/GaussianNoise.hpp>
+#include <rmagine/noise/RelGaussianNoise.hpp>
+#include <rmagine/noise/UniformDustNoise.hpp>
+#include <rmagine/noise/GaussianNoiseCuda.hpp>
+#include <rmagine/noise/RelGaussianNoiseCuda.hpp>
+#include <rmagine/noise/UniformDustNoiseCuda.hpp>
+
 
 #include <sensor_msgs/PointCloud.h>
 
@@ -24,6 +31,7 @@
 #include <std_msgs/ColorRGBA.h>
 
 #include <utility>
+#include <shared_mutex>
 
 using namespace rmagine;
 
@@ -53,12 +61,18 @@ std_msgs::ColorRGBA color_map[] = {
     make_color(0.0, 0.0, 0.0), // black
 };
 
-// EmbreeSimulatorPtr sim;
 
 SimulatorPtr<LiDARModel, Embree> sim_cpu;
+NoisePtr noise_cpu_gauss;
+NoisePtr noise_cpu_rel_gauss;
+NoisePtr noise_cpu_dust;
 
 SimulatorPtr<LiDARModel, Optix> sim_gpu;
+NoiseCudaPtr noise_gpu_gauss;
+NoiseCudaPtr noise_gpu_rel_gauss;
+NoiseCudaPtr noise_gpu_dust;
 
+std::shared_mutex updater_mutex;
 
 LiDARModel model;
 
@@ -66,9 +80,7 @@ LiDARModel model;
 bool pose_received = false;
 
 bool use_gpu = false;
-bool noise_enabled = false;
-float noise_mean = 0.0;
-float noise_stddev = 0.0;
+
 
 ros::Publisher cloud_pub;
 sensor_msgs::PointCloud cloud;
@@ -104,6 +116,7 @@ LiDARModel velodyne_model()
 
 void modelCB(rmagine_ros::LidarModelConfig &config, uint32_t level) 
 {
+    std::unique_lock lock(updater_mutex);
     ROS_INFO("Changing Model");
 
     model.theta.min = config.theta_min;
@@ -120,16 +133,55 @@ void modelCB(rmagine_ros::LidarModelConfig &config, uint32_t level)
     sim_gpu->setModel(model);
     sim_cpu->setModel(model);
 
-
     if(config.computing_unit == 0)
     {
         use_gpu = false;
     } else if(config.computing_unit == 1) {
         use_gpu = true;
     }
-    noise_enabled = config.noise;
-    noise_mean = config.noise_mean;
-    noise_stddev = config.noise_stddev;
+
+    // Noise
+
+    NoiseCuda::Options opt_gpu = {};
+    Noise::Options opt_cpu = {};
+
+    opt_gpu.max_range = model.range.max;
+    opt_cpu.max_range = model.range.max;
+
+    if(config.noise_gauss)
+    {   
+        noise_cpu_gauss = std::make_shared<GaussianNoise>(config.noise_gauss_mean, config.noise_gauss_stddev, opt_cpu);
+        noise_gpu_gauss = std::make_shared<GaussianNoiseCuda>(config.noise_gauss_mean, config.noise_gauss_stddev, opt_gpu);
+    } else {
+        noise_cpu_gauss.reset();
+        noise_gpu_gauss.reset();
+    }
+
+    if(config.noise_rel_gauss)
+    {
+        noise_cpu_rel_gauss = std::make_shared<RelGaussianNoise>(
+            config.noise_rel_gauss_mean, 
+            config.noise_rel_gauss_stddev,
+            config.noise_rel_gauss_range_exp,
+            opt_cpu);
+        noise_gpu_rel_gauss = std::make_shared<RelGaussianNoiseCuda>(
+            config.noise_rel_gauss_mean, 
+            config.noise_rel_gauss_stddev,
+            config.noise_rel_gauss_range_exp,
+            opt_gpu);
+    } else {
+        noise_cpu_rel_gauss.reset();
+        noise_gpu_rel_gauss.reset();
+    }
+
+    if(config.noise_dust)
+    {
+        noise_cpu_dust = std::make_shared<UniformDustNoise>(config.noise_dust_hit_prob, config.noise_dust_ret_prob, opt_cpu);
+        noise_gpu_dust = std::make_shared<UniformDustNoiseCuda>(config.noise_dust_hit_prob, config.noise_dust_ret_prob, opt_gpu);
+    } else {
+        noise_cpu_dust.reset();
+        noise_gpu_dust.reset();
+    }
 }
 
 void fillPointCloud(
@@ -190,8 +242,15 @@ void fillCloudNormals(
                 cloud_normals.points.push_back(p_shifted_ros);
 
                 unsigned int object_id = object_ids[buff_id];
+                if(object_id == UINT_MAX)
+                {
+                    // TODO fix this
+                    object_id = 0;
+                }
+
                 cloud_normals.colors.push_back(color_map[object_id]);
                 cloud_normals.colors.push_back(color_map[object_id]);
+                
             }
         }
     }
@@ -249,6 +308,8 @@ void poseCB(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg)
 
 void simulate()
 {
+    std::shared_lock lock(updater_mutex);
+
     Memory<Transform, RAM> Tbm(1);
     Tbm->R.x = T_base_map.transform.rotation.x;
     Tbm->R.y = T_base_map.transform.rotation.y;
@@ -286,6 +347,18 @@ void simulate()
 
         sw();
         sim_gpu->simulate(Tbm_gpu, res_gpu);
+        if(noise_gpu_gauss)
+        {
+            noise_gpu_gauss->apply(res_gpu.ranges);
+        }
+        if(noise_gpu_rel_gauss)
+        {
+            noise_gpu_rel_gauss->apply(res_gpu.ranges);
+        }
+        if(noise_gpu_dust)
+        {
+            noise_gpu_dust->apply(res_gpu.ranges);
+        }
         el = sw();
 
         // download
@@ -300,6 +373,18 @@ void simulate()
 
         sw();
         sim_cpu->simulate(Tbm, res_cpu);
+        if(noise_cpu_gauss)
+        {
+            noise_cpu_gauss->apply(res_cpu.ranges);
+        }
+        if(noise_cpu_rel_gauss)
+        {
+            noise_cpu_rel_gauss->apply(res_cpu.ranges);
+        }
+        if(noise_cpu_dust)
+        {
+            noise_cpu_dust->apply(res_cpu.ranges);
+        }
         el = sw();
     }
     
@@ -314,10 +399,10 @@ void simulate()
     // el = sw();
     // std::cout << "Simulated " << ranges_gpu.size() << " ranges and normals in " << el * 1000.0 << "ms" << std::endl;
     
-    if(noise_enabled)
-    {
-        GaussianNoise(noise_mean, noise_stddev).apply(res_cpu.ranges);
-    }
+    // if(noise_enabled)
+    // {
+    //     GaussianNoise(noise_mean, noise_stddev).apply(res_cpu.ranges);
+    // }
 
     if(use_gpu)
     {

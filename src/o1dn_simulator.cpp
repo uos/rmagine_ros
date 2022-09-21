@@ -8,7 +8,12 @@
 #include <rmagine/simulation/SimulatorEmbree.hpp>
 #include <rmagine/simulation/SimulatorOptix.hpp>
 
-#include <rmagine/noise/noise.cuh>
+#include <rmagine/noise/GaussianNoise.hpp>
+#include <rmagine/noise/RelGaussianNoise.hpp>
+#include <rmagine/noise/UniformDustNoise.hpp>
+#include <rmagine/noise/GaussianNoiseCuda.hpp>
+#include <rmagine/noise/RelGaussianNoiseCuda.hpp>
+#include <rmagine/noise/UniformDustNoiseCuda.hpp>
 
 #include <sensor_msgs/PointCloud.h>
 
@@ -22,6 +27,7 @@
 #include <std_msgs/ColorRGBA.h>
 
 #include <utility>
+#include <shared_mutex>
 
 using namespace rmagine;
 
@@ -52,8 +58,14 @@ std_msgs::ColorRGBA color_map[] = {
 };
 
 SimulatorPtr<O1DnModel, Embree> sim_cpu;
+NoisePtr noise_cpu_gauss;
+NoisePtr noise_cpu_rel_gauss;
+NoisePtr noise_cpu_dust;
 
 SimulatorPtr<O1DnModel, Optix> sim_gpu;
+NoiseCudaPtr noise_gpu_gauss;
+NoiseCudaPtr noise_gpu_rel_gauss;
+NoiseCudaPtr noise_gpu_dust;
 
 O1DnModel model;
 
@@ -136,9 +148,48 @@ void modelCB(rmagine_ros::O1DnModelConfig &config, uint32_t level)
         use_gpu = true;
     }
 
-    noise_enabled = config.noise;
-    noise_mean = config.noise_mean;
-    noise_stddev = config.noise_stddev;
+    // Noise
+
+    NoiseCuda::Options opt_gpu = {};
+    Noise::Options opt_cpu = {};
+
+    opt_gpu.max_range = model.range.max;
+    opt_cpu.max_range = model.range.max;
+
+    if(config.noise_gauss)
+    {   
+        noise_cpu_gauss = std::make_shared<GaussianNoise>(config.noise_gauss_mean, config.noise_gauss_stddev, opt_cpu);
+        noise_gpu_gauss = std::make_shared<GaussianNoiseCuda>(config.noise_gauss_mean, config.noise_gauss_stddev, opt_gpu);
+    } else {
+        noise_cpu_gauss.reset();
+        noise_gpu_gauss.reset();
+    }
+
+    if(config.noise_rel_gauss)
+    {
+        noise_cpu_rel_gauss = std::make_shared<RelGaussianNoise>(
+            config.noise_rel_gauss_mean, 
+            config.noise_rel_gauss_stddev,
+            config.noise_rel_gauss_range_exp,
+            opt_cpu);
+        noise_gpu_rel_gauss = std::make_shared<RelGaussianNoiseCuda>(
+            config.noise_rel_gauss_mean, 
+            config.noise_rel_gauss_stddev,
+            config.noise_rel_gauss_range_exp,
+            opt_gpu);
+    } else {
+        noise_cpu_rel_gauss.reset();
+        noise_gpu_rel_gauss.reset();
+    }
+
+    if(config.noise_dust)
+    {
+        noise_cpu_dust = std::make_shared<UniformDustNoise>(config.noise_dust_hit_prob, config.noise_dust_ret_prob, opt_cpu);
+        noise_gpu_dust = std::make_shared<UniformDustNoiseCuda>(config.noise_dust_hit_prob, config.noise_dust_ret_prob, opt_gpu);
+    } else {
+        noise_cpu_dust.reset();
+        noise_gpu_dust.reset();
+    }
 }
 
 void fillPointCloud(
@@ -199,6 +250,11 @@ void fillCloudNormals(
                 cloud_normals.points.push_back(p_shifted_ros);
 
                 unsigned int object_id = object_ids[buff_id];
+                if(object_id == UINT_MAX)
+                {
+                    // TODO fix this
+                    object_id = 0;
+                }
                 cloud_normals.colors.push_back(color_map[object_id]);
                 cloud_normals.colors.push_back(color_map[object_id]);
             }
@@ -295,6 +351,20 @@ void simulate()
 
         sw();
         sim_gpu->simulate(Tbm_gpu, res_gpu);
+
+
+        if(noise_gpu_gauss)
+        {
+            noise_gpu_gauss->apply(res_gpu.ranges);
+        }
+        if(noise_gpu_rel_gauss)
+        {
+            noise_gpu_rel_gauss->apply(res_gpu.ranges);
+        }
+        if(noise_gpu_dust)
+        {
+            noise_gpu_dust->apply(res_gpu.ranges);
+        }
         el = sw();
 
         // download
@@ -309,12 +379,19 @@ void simulate()
 
         sw();
         sim_cpu->simulate(Tbm, res_cpu);
+        if(noise_cpu_gauss)
+        {
+            noise_cpu_gauss->apply(res_cpu.ranges);
+        }
+        if(noise_cpu_rel_gauss)
+        {
+            noise_cpu_rel_gauss->apply(res_cpu.ranges);
+        }
+        if(noise_cpu_dust)
+        {
+            noise_cpu_dust->apply(res_cpu.ranges);
+        }
         el = sw();
-    }
-
-    if(noise_enabled)
-    {
-        GaussianNoise(noise_mean, noise_stddev).apply(res_cpu.ranges);
     }
 
     if(use_gpu)
