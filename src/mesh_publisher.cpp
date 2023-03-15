@@ -6,9 +6,12 @@
 
 #include <rmagine/map/EmbreeMap.hpp>
 
-using namespace rmagine;
 
-mesh_msgs::MeshGeometry embreeToRos(EmbreeMeshPtr mesh, Matrix4x4 T)
+namespace rm = rmagine;
+
+rm::Transform pre_transform;
+
+mesh_msgs::MeshGeometry embreeToRos(rm::EmbreeMeshPtr mesh, rm::Matrix4x4 T)
 {
     mesh_msgs::MeshGeometry mesh_ros;
 
@@ -39,28 +42,35 @@ mesh_msgs::MeshGeometry embreeToRos(EmbreeMeshPtr mesh, Matrix4x4 T)
     return mesh_ros;
 }
 
-std::vector<mesh_msgs::MeshGeometry> embreeToRos(
-    EmbreeScenePtr scene, 
-    Matrix4x4 T = Matrix4x4::Identity())
+std::unordered_map<unsigned int, mesh_msgs::MeshGeometry> embreeToRos(
+    rm::EmbreeScenePtr scene, 
+    rm::Matrix4x4 T = rm::Matrix4x4::Identity())
 {
-    std::vector<mesh_msgs::MeshGeometry> ret;
+    std::unordered_map<unsigned int, mesh_msgs::MeshGeometry> ret;
 
     for(auto elem : scene->geometries())
     {
         size_t geom_id = elem.first;
-        EmbreeInstancePtr inst = std::dynamic_pointer_cast<EmbreeInstance>(elem.second);
+        rm::EmbreeInstancePtr inst = std::dynamic_pointer_cast<rm::EmbreeInstance>(elem.second);
         if(inst)
         {
-            Matrix4x4 T_ = T * inst->matrix();
+            rm::Matrix4x4 M = rm::compose(pre_transform, rm::Vector3{1.0, 1.0, 1.0});
+            rm::Matrix4x4 T_ = T * M * inst->matrix();
+            std::cout << "instance: " << inst->name << std::endl;
 
-            std::vector<mesh_msgs::MeshGeometry> ret_ = embreeToRos(inst->scene(), T_);
-            ret.insert(ret.end(), ret_.begin(), ret_.end());
+            auto ret_ = embreeToRos(inst->scene(), T_);
+            ret.insert(ret_.begin(), ret_.end());
         } else {
-            EmbreeMeshPtr mesh = std::dynamic_pointer_cast<EmbreeMesh>(elem.second);
+            rm::EmbreeMeshPtr mesh = std::dynamic_pointer_cast<rm::EmbreeMesh>(elem.second);
+            
             if(mesh)
             {
+                unsigned int mesh_id = mesh->id(scene);
+                std::cout << "mesh " << mesh_id << ": " << mesh->name << std::endl;
                 // leaf
-                ret.push_back(embreeToRos(mesh, T));
+                // rm::Matrix4x4 pre_transform_matrix = (rm::Matrix4x4)pre_transform;
+                rm::Matrix4x4 M = rm::compose(pre_transform, rm::Vector3{1.0, 1.0, 1.0});
+                ret[mesh_id] = embreeToRos(mesh, T * M);
             }
         }
     }
@@ -78,38 +88,71 @@ int main(int argc, char** argv)
     std::string map_frame;
     std::string meshfile;
 
+    double publish_freq;
     nh_p.param<std::string>("file", meshfile, "/home/amock/ros_workspaces/amcl_flex/avz_floor.ply");
     nh_p.param<std::string>("frame", map_frame, "map");
+    nh_p.param<double>("publish_freq", publish_freq, 0.1);
 
-    auto map = importEmbreeMap(meshfile);
+    pre_transform = rm::Transform::Identity();
+    std::vector<double> transform_params;
+    if(nh_p.getParam("pre_transform", transform_params))
+    {
+        if(transform_params.size() == 6)
+        {
+            pre_transform.t = rm::Vector{
+                    (float)transform_params[0], 
+                    (float)transform_params[1], 
+                    (float)transform_params[2]};
+            pre_transform.R = rm::EulerAngles{
+                    (float)transform_params[3],
+                    (float)transform_params[4],
+                    (float)transform_params[5]};
+        } else if(transform_params.size() == 7) {
+            pre_transform.t = rm::Vector{
+                    (float)transform_params[0],
+                    (float)transform_params[1],
+                    (float)transform_params[2]};
+            pre_transform.R = rm::Quaternion{
+                    (float)transform_params[3],
+                    (float)transform_params[4],
+                    (float)transform_params[5],
+                    (float)transform_params[6]
+            };
+        }
+    }
 
-    // std::vector<mesh_msgs::MeshGeometryStamped> meshes_ros;
 
-    std::vector<mesh_msgs::MeshGeometry> meshes_ros = embreeToRos(map->scene);
+    auto map = rm::import_embree_map(meshfile);
 
-    std::vector<mesh_msgs::MeshGeometryStamped> meshes_stamped(meshes_ros.size());
+    auto meshes_ros = embreeToRos(map->scene);
 
-    for(size_t i=0; i<meshes_stamped.size(); i++)
+    std::unordered_map<unsigned int, mesh_msgs::MeshGeometryStamped> meshes_stamped;
+
+    for(auto elem : meshes_ros)
     {
         std::stringstream ss;
-        ss << "mesh/" << i;
-        meshes_stamped[i].mesh_geometry = meshes_ros[i];
-        meshes_stamped[i].header.frame_id = map_frame;
-        meshes_stamped[i].uuid = ss.str();
-        std::cout << meshes_stamped[i].uuid << std::endl;
+        ss << "mesh/" << elem.first;
+        mesh_msgs::MeshGeometryStamped mesh_stamped;
+        mesh_stamped.mesh_geometry = elem.second;
+        mesh_stamped.header.frame_id = map_frame;
+        mesh_stamped.uuid = ss.str();
+        meshes_stamped[elem.first] = mesh_stamped;
     }
 
-    // ros::Publisher mesh_pub = nh_p.advertise<mesh_msgs::MeshGeometryStamped>("map_mesh", 100);
+    std::unordered_map<unsigned int, std::shared_ptr<ros::Publisher> > mesh_pubs;
 
-    std::vector<ros::Publisher> mesh_pubs;
-    for(size_t i=0; i<meshes_stamped.size(); i++)
+    for(auto elem : meshes_stamped)
     {
-        mesh_pubs.push_back(nh_p.advertise<mesh_msgs::MeshGeometryStamped>(meshes_stamped[i].uuid, 10));
+        mesh_pubs[elem.first] = std::make_shared<ros::Publisher>(
+            nh_p.advertise<mesh_msgs::MeshGeometryStamped>(elem.second.uuid, 10)
+        );
+        std::cout << elem.first << " - " << elem.second.mesh_geometry.vertices.size() << "v, " 
+                    << elem.second.mesh_geometry.faces.size() << "f" << std::endl; 
     }
 
-    ros::Rate r(0.1);
+    ros::Rate r(publish_freq);
 
-    std::cout << "Publishing Meshes (" << meshes_stamped.size() << ") ..." << std::endl;
+    std::cout << "Publishing Meshes (" << meshes_stamped.size() << ") at " << publish_freq << "hz ..." << std::endl;
     while(ros::ok())
     {
         for(size_t i=0; i<meshes_stamped.size(); i++)
@@ -117,7 +160,7 @@ int main(int argc, char** argv)
             auto mesh = meshes_stamped[i];
             auto pub = mesh_pubs[i];
             mesh.header.stamp = ros::Time::now();
-            pub.publish(mesh);
+            pub->publish(mesh);
         }
         
         r.sleep();

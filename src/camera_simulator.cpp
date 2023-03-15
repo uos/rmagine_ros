@@ -444,10 +444,10 @@ int main(int argc, char** argv)
     EulerAngles euler = {Tsb_raw[3], Tsb_raw[4], Tsb_raw[5]};
     Tsb.R = euler;
 
-    EmbreeMapPtr map_cpu = importEmbreeMap(meshfile);
+    EmbreeMapPtr map_cpu = import_embree_map(meshfile);
     sim_cpu = std::make_shared<PinholeSimulatorEmbree>(map_cpu);
 
-    OptixMapPtr map_gpu = importOptixMap(meshfile);
+    OptixMapPtr map_gpu = import_optix_map(meshfile);
     sim_gpu = std::make_shared<PinholeSimulatorOptix>(map_gpu);
 
     // Define Sensor Model
